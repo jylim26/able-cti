@@ -11,10 +11,10 @@ spring:
   application:
     name: able-cti
 
-# Asterisk AMI (사내 VM 호스트의 Asterisk)
+# Asterisk AMI (로컬 docker compose의 asterisk 서비스)
 asterisk:
   ami:
-    host: ${AMI_HOST:192.168.40.200}
+    host: ${AMI_HOST:127.0.0.1}
     port: 5038
     username: cti
     password: ctisecret

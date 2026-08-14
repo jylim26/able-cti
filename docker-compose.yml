@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: able
+      POSTGRES_USER: able
+      POSTGRES_PASSWORD: able
+    ports:
+      # WSL 개발 PC는 5432가 점유되어 기본값 15432
+      - "${DB_PORT:-15432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U able -d able"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # 스키마 마이그레이션 (일회성). Asterisk가 부팅 시 queues/queue_log 테이블을
+  # 필요로 하므로 앱 기동 전에 여기서 먼저 적용한다.
+  flyway:
+    image: flyway/flyway:11-alpine
+    command: -url=jdbc:postgresql://db:5432/able -user=able -password=able -connectRetries=10 migrate
+    volumes:
+      - ./src/main/resources/db/migration:/flyway/sql:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  asterisk:
+    build: docker/asterisk
+    ports:
+      - "5038:5038"
+      - "5060:5060/udp"
+      - "10000-10100:10000-10100/udp"
+    volumes:
+      - ./docker/asterisk/conf:/etc/asterisk:ro
+      - ./docker/asterisk/odbc.ini:/etc/odbc.ini:ro
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "asterisk", "-rx", "core show version"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db-data:
