@@ -62,10 +62,10 @@ CREATE TABLE ps_aors (
 );
 
 -- 개발용
-INSERT INTO ps_endpoints (id, aors, auth, context, disallow, allow, direct_media, callerid) VALUES
-    ('1000', '1000', '1000', 'from-internal', 'all', 'ulaw,alaw', 'no', 'Agent 1000 <1000>'),
-    ('1001', '1001', '1001', 'from-internal', 'all', 'ulaw,alaw', 'no', 'Agent 1001 <1001>'),
-    ('1234', '1234', '1234', 'from-trunk',    'all', 'ulaw,alaw', 'no', 'Customer <01012345678>');
+INSERT INTO ps_endpoints (id, aors, auth, context, disallow, allow, direct_media, callerid, force_rport, rewrite_contact, rtp_symmetric) VALUES
+    ('1000', '1000', '1000', 'from-internal', 'all', 'ulaw,alaw', 'no', 'Agent 1000 <1000>',      'yes', 'yes', 'yes'),
+    ('1001', '1001', '1001', 'from-internal', 'all', 'ulaw,alaw', 'no', 'Agent 1001 <1001>',      'yes', 'yes', 'yes'),
+    ('1234', '1234', '1234', 'from-trunk',    'all', 'ulaw,alaw', 'no', 'Customer <01012345678>', 'yes', 'yes', 'yes');
 
 INSERT INTO ps_auths (id, auth_type, username, password) VALUES
     ('1000', 'userpass', '1000', '1000pass'),

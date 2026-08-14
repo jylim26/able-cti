@@ -29,10 +29,9 @@ services:
 
   asterisk:
     build: docker/asterisk
-    ports:
-      - "5038:5038"
-      - "5060:5060/udp"
-      - "10000-10100:10000-10100/udp"
+    # 브리지 네트워크로는 SIP·RTP가 동작하지 않는다. 도커 NAT가 출발지를 게이트웨이
+    # 주소로 바꿔서 Asterisk가 단말에 응답을 되돌릴 수 없다 (BYE 누락, 단방향 음성).
+    network_mode: host
     volumes:
       - ./docker/asterisk/conf:/etc/asterisk:ro
       - ./docker/asterisk/odbc.ini:/etc/odbc.ini:ro
