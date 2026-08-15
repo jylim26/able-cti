@@ -29,6 +29,7 @@ docs 하위 폴더는 성격으로 나뉜다. 새 문서는 성격에 맞는 폴
 | [docs/adr/0002](docs/adr/0002-linkedid-as-call-id.md) | 통화 식별자는 linkedid |
 | [docs/adr/0003](docs/adr/0003-dialplan-optin-tracking.md) | 추적할 콜은 dialplan이 알려준다 |
 | [docs/domain/asterisk-call-model.md](docs/domain/asterisk-call-model.md) | 채널·브리지·context 등 Asterisk가 통화를 보는 방식 |
+| [docs/domain/queue-call-events.md](docs/domain/queue-call-events.md) | 큐 콜에서 실제로 오는 AMI 이벤트와 함정. 상태 머신 설계의 입력 |
 | [docs/notes/ami.md](docs/notes/ami.md) | AMI 연결 (`ami` 모듈) |
 | [docs/notes/call-assembly.md](docs/notes/call-assembly.md) | 콜 조립 (`call` 모듈) |
 
@@ -52,17 +53,13 @@ Date: 2026-08-15
 | AMI 연결 | 기동 시 로그인, 종료 시 로그아웃. 리스너 자동 수집 (`ami` 모듈) |
 | 콜 조립 골격 | UserEvent로 통화 생성, linkedid로 채널 묶기, 마지막 Hangup에서 종료 (`call` 모듈) |
 | 단위 테스트 | 번역기 4개 통과 (`AmiCallEventTranslatorTest`) |
+| 실통화 검증 | 정상 통화·포기호·무응답 재분배·추적 제외까지 6개 시나리오 확인 완료 |
 
 설계 결정: [ADR-0002](docs/adr/0002-linkedid-as-call-id.md) 통화 식별자는 linkedid,
 [ADR-0003](docs/adr/0003-dialplan-optin-tracking.md) 추적할 콜은 dialplan이 UserEvent로 알려준다.
 
-### 바로 다음 할 일
-
-1. **실통화 검증** — 아직 안 했다. 서버를 띄우고 확인한다.
-   - 1234 → `0212345678`: call started → queue joined → leg started →
-     agent connected → leg ended × 2 → call ended 로그
-   - 1000 → 1001 내선 통화와 `600` 에코: 통화가 생기지 않는 것
-2. 검증이 끝나면 커밋한다. 지금 작업 트리에 콜 조립 골격 전체가 커밋되지 않은 채로 있다.
+검증 결과와 실측한 이벤트 순서는
+[콜 조립 노트](docs/notes/call-assembly.md)의 실통화 검증 결과 절에 있다.
 
 ### 다음 설계 후보
 
