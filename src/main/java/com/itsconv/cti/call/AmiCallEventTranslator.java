@@ -5,7 +5,9 @@ import com.itsconv.cti.call.domain.Call;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.asteriskjava.manager.ManagerEventListener;
+import org.asteriskjava.manager.event.AgentCalledEvent;
 import org.asteriskjava.manager.event.AgentConnectEvent;
+import org.asteriskjava.manager.event.AgentRingNoAnswerEvent;
 import org.asteriskjava.manager.event.HangupEvent;
 import org.asteriskjava.manager.event.ManagerEvent;
 import org.asteriskjava.manager.event.NewChannelEvent;
@@ -28,10 +30,14 @@ public class AmiCallEventTranslator implements ManagerEventListener {
                 case CtiCallStartedEvent e -> onCtiCallStarted(e);
                 case NewChannelEvent e -> onNewChannel(e);
                 case QueueCallerJoinEvent e -> onQueueCallerJoin(e);
+                case AgentCalledEvent e -> onAgentCalled(e);
+                case AgentRingNoAnswerEvent e -> onAgentRingNoAnswer(e);
                 case AgentConnectEvent e -> onAgentConnect(e);
                 case HangupEvent e -> onHangup(e);
                 default -> { }
             }
+        } catch (IllegalStateException e) {
+            log.warn("ignored AMI event {}: {}", event.getClass().getSimpleName(), e.getMessage());
         } catch (Exception e) {
             log.error("failed to handle AMI event {}", event.getClass().getSimpleName(), e);
         }
@@ -49,7 +55,7 @@ public class AmiCallEventTranslator implements ManagerEventListener {
         Call call = Call.start(linkedid, e.getCallerIdNum(), e.getExten());
         call.legStarted(e.getUniqueId(), e.getChannel());
         registry.put(call);
-        log.info("call started: linkedid={} caller={} called={}", linkedid, call.getCallerNumber(), call.getCalledNumber());
+        log.info("call started: linkedid={} caller={} called={} state={}", linkedid, call.getCallerNumber(), call.getCalledNumber(), call.getState());
     }
 
     private void onNewChannel(NewChannelEvent e) {
@@ -60,11 +66,31 @@ public class AmiCallEventTranslator implements ManagerEventListener {
     }
 
     private void onQueueCallerJoin(QueueCallerJoinEvent e) {
-        registry.find(e.getLinkedId()).ifPresent(call -> log.info("queue joined: linkedid={} queue={} position={}", call.getLinkedid(), e.getQueue(), e.getPosition()));
+        registry.find(e.getLinkedId()).ifPresent(call -> {
+            call.enqueued(e.getQueue());
+            log.info("queue joined: linkedid={} queue={} position={} state={}", call.getLinkedid(), e.getQueue(), e.getPosition(), call.getState());
+        });
+    }
+
+    private void onAgentCalled(AgentCalledEvent e) {
+        registry.find(e.getLinkedId()).ifPresent(call -> {
+            call.agentRinging(e.getInterface());
+            log.info("agent ringing: linkedid={} interface={} state={}", call.getLinkedid(), e.getInterface(), call.getState());
+        });
+    }
+
+    private void onAgentRingNoAnswer(AgentRingNoAnswerEvent e) {
+        registry.find(e.getLinkedId()).ifPresent(call -> {
+            call.agentRingCanceled(e.getInterface());
+            log.info("agent ring no answer: linkedid={} interface={} state={}", call.getLinkedid(), e.getInterface(), call.getState());
+        });
     }
 
     private void onAgentConnect(AgentConnectEvent e) {
-        registry.find(e.getLinkedId()).ifPresent(call -> log.info("agent connected: linkedid={} interface={}", call.getLinkedid(), e.getInterface()));
+        registry.find(e.getLinkedId()).ifPresent(call -> {
+            call.connected(e.getInterface());
+            log.info("agent connected: linkedid={} interface={} state={}", call.getLinkedid(), e.getInterface(), call.getState());
+        });
     }
 
     private void onHangup(HangupEvent e) {
@@ -73,7 +99,7 @@ public class AmiCallEventTranslator implements ManagerEventListener {
             log.info("leg ended: linkedid={} channel={}", call.getLinkedid(), e.getChannel());
             if (lastLegEnded) {
                 registry.remove(call.getLinkedid());
-                log.info("call ended: linkedid={}", call.getLinkedid());
+                log.info("call ended: linkedid={} state={} answered={}", call.getLinkedid(), call.getState(), call.isAnswered());
             }
         });
     }
