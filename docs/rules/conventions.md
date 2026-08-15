@@ -19,6 +19,29 @@ Date: 2026-08-14
   - `@Builder`
 - 단순 값 묶음은 Lombok보다 Java `record`를 우선한다.
 
+- 지양하는 것은 애너테이션이 아니라 setter 자체다.
+  라이브러리가 값을 채워 넣어야 해서 setter를 뺄 수 없는 클래스라면,
+  손으로 쓰지 말고 `@Setter`를 쓴다. 손으로 써도 가변인 것은 똑같고 길기만 하다.
+
+  예: `CtiCallStartedEvent`는 asterisk-java가 AMI 헤더를 setter로 채운다.
+
+- `@Getter`는 클래스에 붙이고, 공개하지 않을 필드에만 `@Getter(AccessLevel.NONE)`을 붙인다.
+  필드가 늘어날수록 예외를 표시하는 쪽이 짧고, 예외가 눈에 띈다.
+
+---
+
+## Optional
+
+- 값이 없을 수 있는 조회 메서드는 `Optional`을 돌려준다. `null`을 돌려주지 않는다.
+- 찾았을 때만 처리하는 경우는 `ifPresent`를 쓴다.
+
+      registry.find(linkedid).ifPresent(call -> call.legStarted(...));
+
+  `if (call == null) return;`으로 풀어 쓰는 방식도 흔하지만,
+  "찾았을 때만 일한다"가 한 줄에 드러나는 쪽을 택한다.
+
+- `Optional`은 돌려주는 값에만 쓴다. 필드나 파라미터에는 쓰지 않는다.
+
 ---
 
 ## 설정 주입
