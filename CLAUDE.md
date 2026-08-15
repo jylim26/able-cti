@@ -17,6 +17,7 @@ docs 하위 폴더는 성격으로 나뉜다. 새 문서는 성격에 맞는 폴
 | `docs/adr/` | 설계 결정 기록. 무엇을, 왜 그렇게 결정했는가 | 관련 영역을 만지기 전 |
 | `docs/domain/` | 도메인 개념 정리. Asterisk와 콜센터가 어떻게 동작하는가 | 개념이 낯설 때 |
 | `docs/notes/` | 구현 노트. 각 모듈이 어떤 구조이고 왜 그렇게 짰는가 | 해당 모듈을 만지기 전 |
+| `docs/troubleshooting/` | 문제 해결 기록. 증상 → 진단 → 원인 → 조치. 번호 순서로 쌓는다 | 비슷한 증상을 만났을 때 |
 
 결정을 바꿀 때는 기존 ADR을 고치지 않고 새 ADR로 대체한다.
 
@@ -32,6 +33,7 @@ docs 하위 폴더는 성격으로 나뉜다. 새 문서는 성격에 맞는 폴
 | [docs/domain/queue-call-events.md](docs/domain/queue-call-events.md) | 큐 콜에서 실제로 오는 AMI 이벤트와 함정. 상태 머신 설계의 입력 |
 | [docs/notes/ami.md](docs/notes/ami.md) | AMI 연결 (`ami` 모듈) |
 | [docs/notes/call-assembly.md](docs/notes/call-assembly.md) | 콜 조립 (`call` 모듈) |
+| [docs/troubleshooting/0001](docs/troubleshooting/0001-registered-but-unreachable.md) | 등록은 되어 있는데 벨이 안 간다 — 프록시 매핑 소멸과 qualify |
 
 문서는 [ADR-0001](docs/adr/0001-ami-over-ari.md)의 톤으로 쓴다.
 짧은 문장, 핵심 문제는 질문으로, 비교는 표로, 구조는 그림으로.
