@@ -137,7 +137,7 @@ Spring이 해당 인터페이스를 구현한 모든 빈을 수집해 주입한�
 
 ---
 
-## 미구현
+## UserEvent 등록
 
 dialplan이 `UserEvent()`로 전송하는 커스텀 이벤트는 별도 등록이 필요하다.
 
@@ -145,8 +145,13 @@ dialplan이 `UserEvent()`로 전송하는 커스텀 이벤트는 별도 등록�
 connection.registerUserEventClass(CtiCallStartedEvent.class);
 ```
 
-등록하지 않으면 asterisk-java가 전용 타입으로 파싱하지 않는다.
-이벤트 클래스는 콜 도메인의 산출물이므로 함께 추가한다.
+등록하지 않으면 asterisk-java가 전용 타입으로 파싱하지 않고
+`No event class registered for event type` INFO 로그만 남긴다.
+
+`CtiCallStartedEvent`는 [ADR-0003](../adr/0003-dialplan-optin-tracking.md)의
+추적 opt-in 계약으로, 로그인 전에 생성자에서 등록한다.
+이벤트 클래스 자체는 asterisk-java 타입에 의존하므로 `ami` 모듈이 소유하고,
+해석은 [콜 조립](call-assembly.md)의 번역기가 담당한다.
 
 ---
 
