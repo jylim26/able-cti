@@ -17,6 +17,7 @@ public class AmiConnectionManager implements SmartLifecycle {
     public AmiConnectionManager(ManagerConnection connection, List<ManagerEventListener> listeners) {
         this.connection = connection;
 
+        connection.registerUserEventClass(CtiCallStartedEvent.class);
         connection.addEventListener(event -> log.debug("AMI event: {}", event));
         listeners.forEach(connection::addEventListener);
     }
