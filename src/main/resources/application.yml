@@ -2,10 +2,11 @@ server:
   port: 3000
 
 # asterisk-java가 미지원 이벤트 필드마다 내는 WARN 억제 (기능 영향 없음)
+# com.itsconv.cti.ami를 DEBUG로 올리면 수신한 AMI 이벤트 원문이 전부 찍힌다
 logging:
   level:
     org.asteriskjava.manager.util.EventAttributesHelper: ERROR
-    com.itsconv.cti.ami: DEBUG
+    com.itsconv.cti.ami: INFO
 
 spring:
   application:
