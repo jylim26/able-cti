@@ -29,6 +29,7 @@ docs 하위 폴더는 성격으로 나뉜다. 새 문서는 성격에 맞는 폴
 | [docs/adr/0001](docs/adr/0001-ami-over-ari.md) | Asterisk 제어는 AMI, 콜 분배는 dialplan |
 | [docs/adr/0002](docs/adr/0002-linkedid-as-call-id.md) | 통화 식별자는 linkedid |
 | [docs/adr/0003](docs/adr/0003-dialplan-optin-tracking.md) | 추적할 콜은 dialplan이 알려준다 |
+| [docs/adr/0004](docs/adr/0004-call-state-machine.md) | 콜 상태는 4개, 벨울림은 상태가 아니다 |
 | [docs/domain/asterisk-call-model.md](docs/domain/asterisk-call-model.md) | 채널·브리지·context 등 Asterisk가 통화를 보는 방식 |
 | [docs/domain/queue-call-events.md](docs/domain/queue-call-events.md) | 큐 콜에서 실제로 오는 AMI 이벤트와 함정. 상태 머신 설계의 입력 |
 | [docs/notes/ami.md](docs/notes/ami.md) | AMI 연결 (`ami` 모듈) |
@@ -54,8 +55,9 @@ Date: 2026-08-15
 | 통화 경로 | 1234 → `0212345678` → queue01 → 상담원. 에코 테스트는 `600` |
 | AMI 연결 | 기동 시 로그인, 종료 시 로그아웃. 리스너 자동 수집 (`ami` 모듈) |
 | 콜 조립 골격 | UserEvent로 통화 생성, linkedid로 채널 묶기, 마지막 Hangup에서 종료 (`call` 모듈) |
-| 단위 테스트 | 번역기 4개 통과 (`AmiCallEventTranslatorTest`) |
-| 실통화 검증 | 정상 통화·포기호·무응답 재분배·추적 제외까지 6개 시나리오 확인 완료 |
+| 콜 상태 머신 | RINGING→QUEUED→CONNECTED→ENDED 전이와 벨울림 기록 ([ADR-0004](docs/adr/0004-call-state-machine.md)) |
+| 단위 테스트 | 번역기 9개 통과 (`AmiCallEventTranslatorTest`) |
+| 실통화 검증 | 6개 시나리오를 상태 전이(state=, answered=)까지 확인 완료 |
 
 설계 결정: [ADR-0002](docs/adr/0002-linkedid-as-call-id.md) 통화 식별자는 linkedid,
 [ADR-0003](docs/adr/0003-dialplan-optin-tracking.md) 추적할 콜은 dialplan이 UserEvent로 알려준다.
@@ -65,7 +67,6 @@ Date: 2026-08-15
 
 ### 다음 설계 후보
 
-- 콜 상태 머신 — RINGING/QUEUED/CONNECTED 같은 상태와 전이 규칙
 - 상담원 상태 — 큐 멤버 투입/이석, 상태 조회의 원천
 - 읽기 모델과 전달 — WebSocket/DB로 무엇을 어떤 형태로 내보낼지
 - 아웃바운드 — Originate 전에 callId를 돌려주는 방법 (ADR-0002에 후보만 적어둠)

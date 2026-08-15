@@ -6,15 +6,15 @@ Date: 2026-08-15
 
 `call` 모듈은 채널 단위의 AMI 이벤트를 통화 단위의 Call로 조립한다.
 
-이번 단계의 범위는 큐 인바운드 콜을 알아보고, 채널들을 묶고,
-끝나는 시점을 잡는 것까지다.
-상태 머신(RINGING/QUEUED/CONNECTED...), 이벤트 발행, 아웃바운드,
-재동기화는 이후 단계에서 다룬다.
+범위는 큐 인바운드 콜을 알아보고, 채널들을 묶고,
+상태를 따라가고, 끝나는 시점을 잡는 것까지다.
+이벤트 발행, 아웃바운드, 재동기화는 이후 단계에서 다룬다.
 
-무엇을 기준으로 콜을 알아보는지는 두 ADR에 있다.
+설계 결정은 세 ADR에 있다.
 
 - [ADR-0002](../adr/0002-linkedid-as-call-id.md) — 통화 식별자는 linkedid
 - [ADR-0003](../adr/0003-dialplan-optin-tracking.md) — 추적할 콜은 dialplan이 알려준다
+- [ADR-0004](../adr/0004-call-state-machine.md) — 콜 상태는 4개, 벨울림은 상태가 아니다
 
 ---
 
@@ -44,11 +44,19 @@ Date: 2026-08-15
 | 순서 | AMI 이벤트 | 처리 |
 |---|---|---|
 | 1 | `Newchannel` (고객 채널) | 버린다. 아직 추적 대상인지 모른다 |
-| 2 | `UserEvent(CtiCallStarted)` | Call을 만들고 고객 채널을 붙인다. 통화가 생기는 유일한 입구 |
-| 3 | `QueueCallerJoin` | 로그만 남긴다 (상태 머신 단계에서 QUEUED 전이로 바뀔 자리) |
+| 2 | `UserEvent(CtiCallStarted)` | Call을 만들고(상태 RINGING) 고객 채널을 붙인다. 통화가 생기는 유일한 입구 |
+| 3 | `QueueCallerJoin` | QUEUED로 전이하고 큐 이름을 기록한다 |
 | 4 | `Newchannel` (상담원 채널) | 이미 있는 Call에 채널을 붙인다 |
-| 5 | `AgentConnect` | 로그만 남긴다 (상태 머신 단계에서 CONNECTED 전이로 바뀔 자리) |
-| 6 | `Hangup` × 2 | 채널을 종료 처리한다. 마지막 채널이면 통화 종료, 목록에서 제거 |
+| 5 | `AgentCalled` | 벨울림 기록(울리는 상담원 `interface`)을 쓴다. 상태는 QUEUED 그대로 |
+| 6 | `AgentRingNoAnswer` | 같은 상담원이면 벨울림 기록을 지운다 |
+| 7 | `AgentConnect` | CONNECTED로 전이하고 상담원과 `answeredAt`을 확정한다 |
+| 8 | `Hangup` × n | 채널을 종료 처리한다. 마지막 채널이면 ENDED로 전이, 목록에서 제거 |
+
+상태와 전이 규칙, 벨울림이 상태가 아닌 이유는 [ADR-0004](../adr/0004-call-state-machine.md)에 있다.
+
+전이 검증은 Call이 한다. 표에 없는 전이는 `IllegalStateException`을 던지고,
+번역기의 `onManagerEvent`가 잡아서 경고 로그만 남긴다.
+포기호는 별도 이벤트 없이 "응답(`answeredAt`) 없이 끝난 통화"로 구분된다.
 
 판별식은 두 개뿐이다.
 
@@ -231,30 +239,46 @@ callerIdNum, exten, channel, uniqueId는 Asterisk가 자동으로 붙여주는 �
 
 Date: 2026-08-15
 
-내선 3개(1000·1001 상담원, 1234 고객)를 등록하고 `PJSIP/1000`을 queue01에
-넣은 상태에서 확인했다.
+내선 3개(1000·1001 상담원, 1234 고객)를 등록하고 두 상담원을 queue01에
+넣은 상태에서 확인했다. 상태 머신([ADR-0004](../adr/0004-call-state-machine.md))
+적용 후 상태 전이까지 다시 검증했다.
 
 | 시나리오 | 기대 | 결과 |
 |---|---|---|
-| 1234 → `0212345678`, 고객이 먼저 끊음 | 통화 조립 후 종료 | 통과 |
+| 1234 → `0212345678`, 고객이 먼저 끊음 | RINGING→QUEUED→CONNECTED→ENDED, answered=true | 통과 |
 | 1234 → `0212345678`, 상담원이 먼저 끊음 | 같은 결과 | 통과 |
-| 포기호 — 상담원이 받기 전에 고객이 끊음 | 통화가 목록에서 지워짐 | 통과 |
-| 무응답 재분배 — 두 상담원이 안 받고 재호출로 응답 | 중간에 끝나지 않음 | 통과 |
+| 포기호 — 상담원이 받기 전에 고객이 끊음 | CONNECTED 없이 ENDED, answered=false | 통과 |
+| 무응답 재분배 — 두 상담원이 안 받고 재호출로 응답 | 무응답 동안 QUEUED 유지, 최종 answered=true | 통과 |
 | 1000 → 1001 내선 통화 | 통화가 생기지 않음 | 통과 |
 | `600` 에코 테스트 | 통화가 생기지 않음 | 통과 |
+
+전 시나리오에서 표에 없는 전이 경고(`ignored AMI event`)는 0건이었다.
 
 각 시나리오에서 실제로 온 이벤트는
 [큐 콜에서 오는 AMI 이벤트](../domain/queue-call-events.md)에 정리했다.
 
-큐 인바운드에서 실제로 찍힌 로그다.
+정상 통화에서 실제로 찍힌 로그다.
 
-    call started:    linkedid=dev-1786775552.13 caller=01012345678 called=0212345678
-    queue joined:    linkedid=dev-1786775552.13 queue=queue01 position=1
-    leg started:     linkedid=dev-1786775552.13 channel=PJSIP/1000-0000000e
-    agent connected: linkedid=dev-1786775552.13 interface=PJSIP/1000
-    leg ended:       linkedid=dev-1786775552.13 channel=PJSIP/1000-0000000e
-    leg ended:       linkedid=dev-1786775552.13 channel=PJSIP/1234-0000000d
-    call ended:      linkedid=dev-1786775552.13
+    call started:    linkedid=dev-1786779599.51 caller=01012345678 called=0212345678 state=RINGING
+    queue joined:    linkedid=dev-1786779599.51 queue=queue01 position=1 state=QUEUED
+    leg started:     linkedid=dev-1786779599.51 channel=PJSIP/1000-00000034
+    agent ringing:   linkedid=dev-1786779599.51 interface=PJSIP/1000 state=QUEUED
+    agent connected: linkedid=dev-1786779599.51 interface=PJSIP/1000 state=CONNECTED
+    leg ended:       linkedid=dev-1786779599.51 channel=PJSIP/1000-00000034
+    leg ended:       linkedid=dev-1786779599.51 channel=PJSIP/1234-00000033
+    call ended:      linkedid=dev-1786779599.51 state=ENDED answered=true
+
+무응답 재분배에서는 벨울림이 상담원을 옮겨 다니는 동안 상태가 QUEUED에 머물렀다.
+
+    agent ringing:        interface=PJSIP/1001 state=QUEUED
+    agent ring no answer: interface=PJSIP/1001 state=QUEUED
+    agent ringing:        interface=PJSIP/1000 state=QUEUED
+    agent ring no answer: interface=PJSIP/1000 state=QUEUED
+    agent ringing:        interface=PJSIP/1001 state=QUEUED
+    agent connected:      interface=PJSIP/1001 state=CONNECTED
+
+포기호에서는 `agent ring no answer` 없이 바로 종료됐다.
+포기호에 `AgentRingNoAnswer`가 오지 않는다는 실측과 일치한다.
 
 `caller`가 `01012345678`로 찍히는 것은 개발환경에서 1234 단말의 callerid를
 `Customer <01012345678>`로 넣어두었기 때문이다. 통신사가 넘겨주는 고객 번호
