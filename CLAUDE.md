@@ -30,6 +30,7 @@ docs 하위 폴더는 성격으로 나뉜다. 새 문서는 성격에 맞는 폴
 | [docs/adr/0002](docs/adr/0002-linkedid-as-call-id.md) | 통화 식별자는 linkedid |
 | [docs/adr/0003](docs/adr/0003-dialplan-optin-tracking.md) | 추적할 콜은 dialplan이 알려준다 |
 | [docs/adr/0004](docs/adr/0004-call-state-machine.md) | 콜 상태는 4개, 벨울림은 상태가 아니다 |
+| [docs/adr/0005](docs/adr/0005-agent-state-model.md) | 상담원 상태는 4개, 후처리는 상태가 아니라 이석 사유다 |
 | [docs/domain/asterisk-call-model.md](docs/domain/asterisk-call-model.md) | 채널·브리지·context 등 Asterisk가 통화를 보는 방식 |
 | [docs/domain/queue-call-events.md](docs/domain/queue-call-events.md) | 큐 콜에서 실제로 오는 AMI 이벤트와 함정. 상태 머신 설계의 입력 |
 | [docs/notes/ami.md](docs/notes/ami.md) | AMI 연결 (`ami` 모듈) |
