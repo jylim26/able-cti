@@ -5,6 +5,9 @@ Asterisk 기반 콜센터 CTI 서버. 설계를 하나씩 결정하고 ADR로 �
 작업을 시작하기 전에 이 문서의 "현재 상태"를 먼저 읽는다.
 코드나 설계를 바꿨으면 끝나기 전에 이 문서를 갱신한다.
 
+기능을 개발할 때 MVP 단계에서는 과한 방어 코드를 작성하지 않는다.
+지금 일어날 수 있는 실패만 다루고, 추측성 예외 처리는 넣지 않는다.
+
 ---
 
 ## 문서
@@ -36,6 +39,7 @@ docs 하위 폴더는 성격으로 나뉜다. 새 문서는 성격에 맞는 폴
 | [docs/domain/queue-member-events.md](docs/domain/queue-member-events.md) | 큐 멤버 투입/이석 시 오는 AMI 이벤트와 함정. 상담원 상태 구현의 입력 |
 | [docs/notes/ami.md](docs/notes/ami.md) | AMI 연결 (`ami` 모듈) |
 | [docs/notes/call-assembly.md](docs/notes/call-assembly.md) | 콜 조립 (`call` 모듈) |
+| [docs/notes/agent.md](docs/notes/agent.md) | 상담원 상태 (`agent` 모듈) |
 | [docs/troubleshooting/0001](docs/troubleshooting/0001-registered-but-unreachable.md) | 등록은 되어 있는데 벨이 안 간다 — 프록시 매핑 소멸과 qualify |
 
 문서는 [ADR-0001](docs/adr/0001-ami-over-ari.md)의 톤으로 쓴다.
@@ -46,7 +50,7 @@ docs 하위 폴더는 성격으로 나뉜다. 새 문서는 성격에 맞는 폴
 
 ## 현재 상태
 
-Date: 2026-08-15
+Date: 2026-08-16
 
 ### 되어 있는 것
 
@@ -58,8 +62,11 @@ Date: 2026-08-15
 | AMI 연결 | 기동 시 로그인, 종료 시 로그아웃. 리스너 자동 수집 (`ami` 모듈) |
 | 콜 조립 골격 | UserEvent로 통화 생성, linkedid로 채널 묶기, 마지막 Hangup에서 종료 (`call` 모듈) |
 | 콜 상태 머신 | RINGING→QUEUED→CONNECTED→ENDED 전이와 벨울림 기록 ([ADR-0004](docs/adr/0004-call-state-machine.md)) |
-| 단위 테스트 | 번역기 9개 통과 (`AmiCallEventTranslatorTest`) |
-| 실통화 검증 | 6개 시나리오를 상태 전이(state=, answered=)까지 확인 완료 |
+| AMI 명령 경로 | 큐 멤버 투입/이석/제거 Action 전송 (`ami` 모듈 `AmiQueueActions`) |
+| 상담원 상태 | 로그인·이석·해제·로그아웃 REST. 상태 변경 창구는 `AgentService` 하나 (`agent` 모듈, [ADR-0005](docs/adr/0005-agent-state-model.md)) |
+| DB 접근 | `agents`·`agent_queues`에서 상담원과 큐 배정 조회 (JdbcClient) |
+| 단위 테스트 | 번역기 9개 + 상담원 세션 13개 통과 |
+| 실통화 검증 | 콜 6개 시나리오, 상담원 상태 8개 시나리오 확인 완료 |
 
 설계 결정: [ADR-0002](docs/adr/0002-linkedid-as-call-id.md) 통화 식별자는 linkedid,
 [ADR-0003](docs/adr/0003-dialplan-optin-tracking.md) 추적할 콜은 dialplan이 UserEvent로 알려준다.
@@ -67,11 +74,28 @@ Date: 2026-08-15
 검증 결과와 실측한 이벤트 순서는
 [콜 조립 노트](docs/notes/call-assembly.md)의 실통화 검증 결과 절에 있다.
 
-### 다음 설계 후보
+### 로드맵 (의존 순서)
 
-- 상담원 상태 — 큐 멤버 투입/이석, 상태 조회의 원천
-- 읽기 모델과 전달 — WebSocket/DB로 무엇을 어떤 형태로 내보낼지
-- 아웃바운드 — Originate 전에 callId를 돌려주는 방법 (ADR-0002에 후보만 적어둠)
+1. **콜-상담원 연동** — 콜 이벤트로 ON_CALL·ACW 전이 배선.
+   도메인과 테스트는 준비됨 ([상담원 노트](docs/notes/agent.md)의 "아직 없는 것")
+2. **사용자-내선 분리** — 사용자와 내선을 분리하고 관리자가 사전 매핑.
+   로그인 시 매핑된 내선을 조회해 투입, membername에 사용자 식별을 싣는다
+3. **WebSocket 푸시** — 상담원별 토픽으로 콜·상태 이벤트 전달.
+   착신 팝업의 기반이고, 이후 모든 기능의 눈 역할이라 앞에 둔다
+4. **아웃바운드 (클릭투콜)** — Originate와 콜 방향 구분 확정
+   (ADR-0002에 callId 후보만 적어둠)
+5. **받기·끊기·착신 알림** — 단말 제어 첫 발
+6. **보류/해제** — 코드 전에 Asterisk 실측 스파이크 먼저.
+   채널별 역할과 bridge 추적(콜 모델 확장)이 선행 조건
+7. **호전환 (블라인드 → 협의) → 3자 통화** — 소유권 이전 포함
+8. **읽기 모델·상태 이력·통계** — calls/참여 이력 영속화, 상담원 상태 이력 테이블
+9. **녹취** — 자동 녹취, 조회, 후처리
+
+통화 제어(6·7)의 완료 판정은 이벤트 도착 순서가 아니라
+최종 bridge 구성으로 한다. 실패한 명령은 복구하지 않고 격리한다.
+
+재동기화(재시작 시 세션 복원, 외부 조작 흡수)는 당장 하지 않기로 했다.
+알려진 한계는 [상담원 노트](docs/notes/agent.md)의 "아직 없는 것"에 있다.
 
 ---
 
@@ -85,8 +109,14 @@ Date: 2026-08-15
     docker compose exec asterisk asterisk -rvvv
     docker compose exec asterisk asterisk -rx "pjsip show contacts"
     docker compose exec asterisk asterisk -rx "queue show queue01"
-    docker compose exec asterisk asterisk -rx "queue add member PJSIP/1000 to queue01"
     docker compose exec asterisk asterisk -rx "dialplan reload"
+
+    # 상담원 로그인/이석 (큐 투입은 CLI 대신 이 API를 쓴다)
+    curl -X POST localhost:3000/api/v1/agents/1000/login
+    curl -X POST localhost:3000/api/v1/agents/1000/unpause
+    curl -X POST localhost:3000/api/v1/agents/1000/pause -H 'Content-Type: application/json' -d '{"reason":"lunch"}'
+    curl -X POST localhost:3000/api/v1/agents/1000/logout
+    curl localhost:3000/api/v1/agents
 
 소프트폰 서버 주소는 개발 PC와 같은 곳이면 `127.0.0.1:5060` (UDP).
 계정은 내선번호가 아이디, 비밀번호는 `내선번호pass` (예: 1000 / 1000pass).
