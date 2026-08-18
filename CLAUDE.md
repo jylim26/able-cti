@@ -35,6 +35,7 @@ docs 하위 폴더는 성격으로 나뉜다. 새 문서는 성격에 맞는 폴
 | [docs/adr/0004](docs/adr/0004-call-state-machine.md) | 콜 상태는 4개, 벨울림은 상태가 아니다 |
 | [docs/adr/0005](docs/adr/0005-agent-state-model.md) | 상담원 상태는 4개, 후처리는 상태가 아니라 이석 사유다 |
 | [docs/adr/0006](docs/adr/0006-spring-events-between-modules.md) | 모듈 사이의 통지는 Spring 이벤트로 한다 |
+| [docs/adr/0007](docs/adr/0007-user-extension-mapping.md) | 사용자와 내선을 분리하고 login_id로 식별한다 |
 | [docs/domain/asterisk-call-model.md](docs/domain/asterisk-call-model.md) | 채널·브리지·context 등 Asterisk가 통화를 보는 방식 |
 | [docs/domain/queue-call-events.md](docs/domain/queue-call-events.md) | 큐 콜에서 실제로 오는 AMI 이벤트와 함정. 상태 머신 설계의 입력 |
 | [docs/domain/queue-member-events.md](docs/domain/queue-member-events.md) | 큐 멤버 투입/이석 시 오는 AMI 이벤트와 함정. 상담원 상태 구현의 입력 |
@@ -66,10 +67,11 @@ Date: 2026-08-18
 | 콜 상태 머신 | RINGING→QUEUED→CONNECTED→ENDED 전이와 벨울림 기록 ([ADR-0004](docs/adr/0004-call-state-machine.md)) |
 | AMI 명령 경로 | 큐 멤버 투입/이석/제거 Action 전송 (`ami` 모듈 `AmiQueueActions`) |
 | 상담원 상태 | 로그인·이석·해제·로그아웃 REST. 상태 변경 창구는 `AgentService` 하나 (`agent` 모듈, [ADR-0005](docs/adr/0005-agent-state-model.md)) |
+| 사용자-내선 분리 | API 키는 `login_id`, 내선은 DB 사전 매핑, membername에 login_id ([ADR-0007](docs/adr/0007-user-extension-mapping.md)) |
 | 콜-상담원 연동 | 콜 연결/종료를 Spring 이벤트로 발행, 상담원 ON_CALL·ACW 전이 ([ADR-0006](docs/adr/0006-spring-events-between-modules.md)) |
 | DB 접근 | `agents`·`agent_queues`에서 상담원과 큐 배정 조회 (JdbcClient) |
 | 단위 테스트 | 번역기 9개 + 상담원 세션 13개 + 콜 이벤트 배선 4개 통과 |
-| 실통화 검증 | 콜 6개 시나리오, 상담원 상태 8개 시나리오 확인 완료. ON_CALL·ACW 전이는 실통화 검증 전 |
+| 실통화 검증 | 콜 6개 시나리오 확인 완료. 상담원 REST는 login_id 전환으로 재검증 필요, ON_CALL·ACW 전이는 실통화 검증 전 |
 
 설계 결정: [ADR-0002](docs/adr/0002-linkedid-as-call-id.md) 통화 식별자는 linkedid,
 [ADR-0003](docs/adr/0003-dialplan-optin-tracking.md) 추적할 콜은 dialplan이 UserEvent로 알려준다.
@@ -79,10 +81,10 @@ Date: 2026-08-18
 
 ### 로드맵 (의존 순서)
 
-1. **사용자-내선 분리** — 사용자와 내선을 분리하고 관리자가 사전 매핑.
-   로그인 시 매핑된 내선을 조회해 투입, membername에 사용자 식별을 싣는다
-2. **WebSocket 푸시** — 상담원별 토픽으로 콜·상태 이벤트 전달.
-   착신 팝업의 기반이고, 이후 모든 기능의 눈 역할이라 앞에 둔다
+1. ~~사용자-내선 분리~~ — 완료 ([ADR-0007](docs/adr/0007-user-extension-mapping.md))
+2. **WebSocket 푸시** — 상담원별 토픽(login_id 키)으로 콜·상태 이벤트 전달.
+   착신 팝업의 기반이고, 이후 모든 기능의 눈 역할이라 앞에 둔다.
+   테스트 페이지를 만들어 이후 실검증(상담원 REST 재검증, ON_CALL·ACW)을 여기서 한다
 3. **아웃바운드 (클릭투콜)** — Originate와 콜 방향 구분 확정
    (ADR-0002에 callId 후보만 적어둠)
 4. **받기·끊기·착신 알림** — 단말 제어 첫 발
@@ -113,10 +115,11 @@ Date: 2026-08-18
     docker compose exec asterisk asterisk -rx "dialplan reload"
 
     # 상담원 로그인/이석 (큐 투입은 CLI 대신 이 API를 쓴다)
-    curl -X POST localhost:3000/api/v1/agents/1000/login
-    curl -X POST localhost:3000/api/v1/agents/1000/unpause
-    curl -X POST localhost:3000/api/v1/agents/1000/pause -H 'Content-Type: application/json' -d '{"reason":"lunch"}'
-    curl -X POST localhost:3000/api/v1/agents/1000/logout
+    # 키는 login_id. 개발 시드: agent1→내선 1000, agent2→내선 1001
+    curl -X POST localhost:3000/api/v1/agents/agent1/login
+    curl -X POST localhost:3000/api/v1/agents/agent1/unpause
+    curl -X POST localhost:3000/api/v1/agents/agent1/pause -H 'Content-Type: application/json' -d '{"reason":"lunch"}'
+    curl -X POST localhost:3000/api/v1/agents/agent1/logout
     curl localhost:3000/api/v1/agents
 
 소프트폰 서버 주소는 개발 PC와 같은 곳이면 `127.0.0.1:5060` (UDP).
