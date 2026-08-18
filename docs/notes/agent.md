@@ -49,6 +49,10 @@ MVP에서 지원하지 않는다 (아래 "외부 조작은 MVP에서 다루지 �
 큐 배정과 내선 매핑은 DB(`agents`, `agent_queues`)가 원천이다.
 클라이언트는 `login_id`만 보내고, 어느 내선으로 어느 큐에 들어갈지
 고르지 않는다 ([ADR-0007](../adr/0007-user-extension-mapping.md)).
+
+배정 자체는 관리자가 바꾼다. `GET/PUT /api/v1/agents/{loginId}/queues`로
+배정을 조회·교체하고, `GET /api/v1/queues`가 전체 큐 목록을 준다.
+배정 변경은 다음 로그인부터 적용된다 — 로그인 중인 세션의 큐는 안 바뀐다.
 `QueueAdd`의 MemberName에는 `login_id`를 실어서
 AMI 이벤트와 `queue show`에서 상담원을 식별할 수 있게 한다.
 내선이 매핑되지 않은 사용자의 로그인은 409로 거절한다.
@@ -168,24 +172,24 @@ ON_CALL의 것이 아니다.
 
 ### 실검증 결과
 
-Date: 2026-08-16
+Date: 2026-08-18
 
-아래 기록은 사용자-내선 분리([ADR-0007](../adr/0007-user-extension-mapping.md))
-이전, 내선번호가 API 키이던 때의 것이다. login_id 전환 후 재검증이 필요하고,
-"내선 미매핑 사용자 로그인 → 409" 시나리오가 추가된다.
+login_id 전환([ADR-0007](../adr/0007-user-extension-mapping.md)) 후
+테스트 페이지(`/agents.html`)와 curl로 재검증했다.
+각 조작의 STOMP 푸시 수신도 같이 확인했다 ([ADR-0008](../adr/0008-stomp-agent-topics.md)).
 
 | 시나리오 | 기대 | 결과 |
 |---|---|---|
-| 로그인 | PAUSED(LOGIN), 큐에 `paused:LOGIN` 멤버 생성 | 통과 |
-| 이석 해제 | READY, 큐에서 unpause | 통과 |
-| 사유 있는 이석 | PAUSED(lunch), 큐에 `paused:lunch` | 통과 |
-| 로그아웃 | 204, 큐 멤버 제거, 세션 소멸 | 통과 |
+| 로그인 | PAUSED(LOGIN), 큐에 `agent1 (PJSIP/1000)` 멤버 생성, 푸시 수신 | 통과 |
+| 이석 해제 | READY, 큐에서 unpause, 푸시 수신 | 통과 |
+| 사유 있는 이석 | PAUSED(lunch), 큐에 `paused:lunch`, 푸시 수신 | 통과 |
+| 로그아웃 | 204, 큐 멤버 제거, 세션 소멸, LOGGED_OUT 푸시 수신 | 통과 |
 | 중복 로그인 | 409 | 통과 |
 | 미로그인 상담원 조작 | 404 | 통과 |
 | 예약 사유(ACW)로 이석 요청 | 400 | 통과 |
-| 없는 내선 로그인 | 404 | 통과 |
+| 없는 사용자 로그인 | 404 | 통과 |
+| 내선 미매핑 사용자 로그인 | 409 | 통과 |
+| 통화 연결 | READY에서 ON_CALL, callId 포함 푸시 수신 | 통과 |
+| 통화 종료 | ON_CALL에서 PAUSED(ACW), 푸시 수신 | 통과 |
 
-    agent login:    extension=1000 queues=[queue01] state=PAUSED reason=LOGIN
-    agent unpaused: extension=1000 state=READY
-    agent paused:   extension=1000 reason=lunch state=PAUSED
-    agent logout:   extension=1000 state=LOGGED_OUT
+ON_CALL·ACW는 실통화(1234 → `0212345678`)로 테스트 페이지에서 확인했다.

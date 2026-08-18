@@ -36,12 +36,14 @@ docs 하위 폴더는 성격으로 나뉜다. 새 문서는 성격에 맞는 폴
 | [docs/adr/0005](docs/adr/0005-agent-state-model.md) | 상담원 상태는 4개, 후처리는 상태가 아니라 이석 사유다 |
 | [docs/adr/0006](docs/adr/0006-spring-events-between-modules.md) | 모듈 사이의 통지는 Spring 이벤트로 한다 |
 | [docs/adr/0007](docs/adr/0007-user-extension-mapping.md) | 사용자와 내선을 분리하고 login_id로 식별한다 |
+| [docs/adr/0008](docs/adr/0008-stomp-agent-topics.md) | 상태 푸시는 STOMP, 토픽은 상담원별로 나눈다 |
 | [docs/domain/asterisk-call-model.md](docs/domain/asterisk-call-model.md) | 채널·브리지·context 등 Asterisk가 통화를 보는 방식 |
 | [docs/domain/queue-call-events.md](docs/domain/queue-call-events.md) | 큐 콜에서 실제로 오는 AMI 이벤트와 함정. 상태 머신 설계의 입력 |
 | [docs/domain/queue-member-events.md](docs/domain/queue-member-events.md) | 큐 멤버 투입/이석 시 오는 AMI 이벤트와 함정. 상담원 상태 구현의 입력 |
 | [docs/notes/ami.md](docs/notes/ami.md) | AMI 연결 (`ami` 모듈) |
 | [docs/notes/call-assembly.md](docs/notes/call-assembly.md) | 콜 조립 (`call` 모듈) |
 | [docs/notes/agent.md](docs/notes/agent.md) | 상담원 상태 (`agent` 모듈) |
+| [docs/notes/push.md](docs/notes/push.md) | 상태 푸시와 테스트 페이지 (`push` 모듈) |
 | [docs/notes/threading.md](docs/notes/threading.md) | 스레드 모델. 어떤 스레드가 있고 각 스레드에서 뭘 해도 되는가 |
 | [docs/troubleshooting/0001](docs/troubleshooting/0001-registered-but-unreachable.md) | 등록은 되어 있는데 벨이 안 간다 — 프록시 매핑 소멸과 qualify |
 
@@ -68,10 +70,12 @@ Date: 2026-08-18
 | AMI 명령 경로 | 큐 멤버 투입/이석/제거 Action 전송 (`ami` 모듈 `AmiQueueActions`) |
 | 상담원 상태 | 로그인·이석·해제·로그아웃 REST. 상태 변경 창구는 `AgentService` 하나 (`agent` 모듈, [ADR-0005](docs/adr/0005-agent-state-model.md)) |
 | 사용자-내선 분리 | API 키는 `login_id`, 내선은 DB 사전 매핑, membername에 login_id ([ADR-0007](docs/adr/0007-user-extension-mapping.md)) |
+| 상태 푸시 | STOMP `/topic/agents/{loginId}`로 상담원 스냅샷 푸시 (`push` 모듈, [ADR-0008](docs/adr/0008-stomp-agent-topics.md)) |
+| CTI 테스트 페이지 | `/agents.html`. 상담원 조작·상태 실시간 표시·큐 배정 관리(GET/PUT `/agents/{loginId}/queues`) |
 | 콜-상담원 연동 | 콜 연결/종료를 Spring 이벤트로 발행, 상담원 ON_CALL·ACW 전이 ([ADR-0006](docs/adr/0006-spring-events-between-modules.md)) |
 | DB 접근 | `agents`·`agent_queues`에서 상담원과 큐 배정 조회 (JdbcClient) |
 | 단위 테스트 | 번역기 9개 + 상담원 세션 13개 + 콜 이벤트 배선 4개 통과 |
-| 실통화 검증 | 콜 6개 시나리오 확인 완료. 상담원 REST는 login_id 전환으로 재검증 필요, ON_CALL·ACW 전이는 실통화 검증 전 |
+| 실통화 검증 | 콜 6개 시나리오, 상담원 REST 9개 시나리오(login_id 전환 후, 푸시 수신 포함), ON_CALL·ACW 전이 확인 완료 |
 
 설계 결정: [ADR-0002](docs/adr/0002-linkedid-as-call-id.md) 통화 식별자는 linkedid,
 [ADR-0003](docs/adr/0003-dialplan-optin-tracking.md) 추적할 콜은 dialplan이 UserEvent로 알려준다.
@@ -82,9 +86,9 @@ Date: 2026-08-18
 ### 로드맵 (의존 순서)
 
 1. ~~사용자-내선 분리~~ — 완료 ([ADR-0007](docs/adr/0007-user-extension-mapping.md))
-2. **WebSocket 푸시** — 상담원별 토픽(login_id 키)으로 콜·상태 이벤트 전달.
-   착신 팝업의 기반이고, 이후 모든 기능의 눈 역할이라 앞에 둔다.
-   테스트 페이지를 만들어 이후 실검증(상담원 REST 재검증, ON_CALL·ACW)을 여기서 한다
+2. ~~WebSocket 푸시~~ — 완료 ([ADR-0008](docs/adr/0008-stomp-agent-topics.md)).
+   실검증(상담원 REST 재검증, ON_CALL·ACW, 푸시 수신)은 테스트 페이지 `/agents.html`에서 한다.
+   콜 이벤트 푸시는 착신 알림(4번)에서
 3. **아웃바운드 (클릭투콜)** — Originate와 콜 방향 구분 확정
    (ADR-0002에 callId 후보만 적어둠)
 4. **받기·끊기·착신 알림** — 단말 제어 첫 발
