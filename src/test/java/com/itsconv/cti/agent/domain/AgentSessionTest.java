@@ -14,7 +14,7 @@ class AgentSessionTest {
 
     @BeforeEach
     void setUp() {
-        session = AgentSession.login(1L, "상담원1", "1000", "PJSIP/1000", List.of("queue01"));
+        session = AgentSession.login(1L, "agent1", "상담원1", "1000", "PJSIP/1000", List.of("queue01"));
     }
 
     @Test

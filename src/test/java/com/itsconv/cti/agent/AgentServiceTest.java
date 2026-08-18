@@ -68,14 +68,14 @@ class AgentServiceTest {
         service.callConnected(INTERFACE, CALL_ID, "INBOUND");
         service.queueInboundCallEnded(INTERFACE);
 
-        service.unpause("1000");
+        service.unpause("agent1");
 
         assertEquals(AgentStatus.READY, session.getStatus());
         assertNull(session.getCallId());
     }
 
     private AgentSession loggedInReady() {
-        AgentSession session = AgentSession.login(1L, "agent1000", "1000", INTERFACE, List.of("queue01"));
+        AgentSession session = AgentSession.login(1L, "agent1", "상담원1", "1000", INTERFACE, List.of("queue01"));
         session.unpause();
         registry.put(session);
         return session;

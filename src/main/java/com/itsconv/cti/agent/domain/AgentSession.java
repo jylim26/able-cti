@@ -8,6 +8,7 @@ import lombok.Getter;
 public class AgentSession {
 
     private final long agentId;
+    private final String loginId;
     private final String name;
     private final String extension;
     private final String queueInterface;
@@ -23,8 +24,9 @@ public class AgentSession {
     private String callId;
     private String callDirection;
 
-    private AgentSession(long agentId, String name, String extension, String queueInterface, List<String> queues) {
+    private AgentSession(long agentId, String loginId, String name, String extension, String queueInterface, List<String> queues) {
         this.agentId = agentId;
+        this.loginId = loginId;
         this.name = name;
         this.extension = extension;
         this.queueInterface = queueInterface;
@@ -33,8 +35,8 @@ public class AgentSession {
         this.pauseReason = PauseReason.LOGIN;
     }
 
-    public static AgentSession login(long agentId, String name, String extension, String queueInterface, List<String> queues) {
-        return new AgentSession(agentId, name, extension, queueInterface, queues);
+    public static AgentSession login(long agentId, String loginId, String name, String extension, String queueInterface, List<String> queues) {
+        return new AgentSession(agentId, loginId, name, extension, queueInterface, queues);
     }
 
     public synchronized void pause(String reason) {
@@ -124,6 +126,6 @@ public class AgentSession {
                 return;
             }
         }
-        throw new IllegalStateException("agent %s: invalid transition from %s".formatted(extension, status));
+        throw new IllegalStateException("agent %s: invalid transition from %s".formatted(loginId, status));
     }
 }

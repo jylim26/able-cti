@@ -18,11 +18,11 @@ public class AmiQueueActions {
 
     private final ManagerConnection connection;
 
-    public void addMemberPaused(String queue, String memberInterface) {
+    public void addMemberPaused(String queue, String memberInterface, String memberName) {
         QueueAddAction action = new QueueAddAction();
         action.setQueue(queue);
         action.setInterface(memberInterface);
-        action.setMemberName(memberInterface);
+        action.setMemberName(memberName);
         action.setPaused(true);
         send(action);
     }

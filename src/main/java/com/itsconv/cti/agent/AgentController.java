@@ -24,34 +24,34 @@ public class AgentController {
         return service.sessions().stream().map(AgentResponse::from).toList();
     }
 
-    @PostMapping("/{extension}/login")
-    public AgentResponse login(@PathVariable String extension) {
-        return AgentResponse.from(service.login(extension));
+    @PostMapping("/{loginId}/login")
+    public AgentResponse login(@PathVariable String loginId) {
+        return AgentResponse.from(service.login(loginId));
     }
 
-    @PostMapping("/{extension}/logout")
+    @PostMapping("/{loginId}/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void logout(@PathVariable String extension) {
-        service.logout(extension);
+    public void logout(@PathVariable String loginId) {
+        service.logout(loginId);
     }
 
-    @PostMapping("/{extension}/pause")
-    public AgentResponse pause(@PathVariable String extension, @RequestBody PauseRequest request) {
-        return AgentResponse.from(service.pause(extension, request.reason()));
+    @PostMapping("/{loginId}/pause")
+    public AgentResponse pause(@PathVariable String loginId, @RequestBody PauseRequest request) {
+        return AgentResponse.from(service.pause(loginId, request.reason()));
     }
 
-    @PostMapping("/{extension}/unpause")
-    public AgentResponse unpause(@PathVariable String extension) {
-        return AgentResponse.from(service.unpause(extension));
+    @PostMapping("/{loginId}/unpause")
+    public AgentResponse unpause(@PathVariable String loginId) {
+        return AgentResponse.from(service.unpause(loginId));
     }
 
     record PauseRequest(String reason) {
     }
 
-    record AgentResponse(long agentId, String name, String extension, String status, String pauseReason) {
+    record AgentResponse(long agentId, String loginId, String name, String extension, String status, String pauseReason) {
 
         static AgentResponse from(AgentSession session) {
-            return new AgentResponse(session.getAgentId(), session.getName(), session.getExtension(), session.getStatus().name(), session.getPauseReason());
+            return new AgentResponse(session.getAgentId(), session.getLoginId(), session.getName(), session.getExtension(), session.getStatus().name(), session.getPauseReason());
         }
     }
 }

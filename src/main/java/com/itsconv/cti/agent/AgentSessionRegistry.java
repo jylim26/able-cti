@@ -15,8 +15,8 @@ public class AgentSessionRegistry {
         return Optional.ofNullable(sessions.get(agentId));
     }
 
-    public Optional<AgentSession> findByExtension(String extension) {
-        return extension == null ? Optional.empty() : sessions.values().stream().filter(s -> extension.equals(s.getExtension())).findFirst();
+    public Optional<AgentSession> findByLoginId(String loginId) {
+        return loginId == null ? Optional.empty() : sessions.values().stream().filter(s -> loginId.equals(s.getLoginId())).findFirst();
     }
 
     public Optional<AgentSession> findByInterface(String queueInterface) {
