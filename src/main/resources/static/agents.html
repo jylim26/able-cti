@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>CTI 테스트</title>
+<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7/bundles/stomp.umd.min.js"></script>
+<style>
+  body { font-family: sans-serif; margin: 20px; max-width: 1100px; }
+  h2 { margin-bottom: 4px; }
+  #conn { font-size: 13px; margin: 4px 0 16px; }
+  #conn.on::before { content: '● '; color: green; }
+  #conn.off::before { content: '● '; color: red; }
+  table { border-collapse: collapse; margin: 12px 0; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; font-size: 14px; }
+  th { background: #f5f5f5; }
+  button { margin-right: 4px; cursor: pointer; }
+  .badge { padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; color: white; }
+  .badge.READY { background: #2e7d32; }
+  .badge.ON_CALL { background: #c62828; }
+  .badge.PAUSED { background: #ef6c00; }
+  .badge.LOGGED_OUT { background: #757575; }
+  .queues label { margin-right: 8px; white-space: nowrap; }
+  #loghead { display: flex; align-items: center; gap: 10px; }
+  #log { height: 260px; overflow-y: scroll; border: 1px solid #ccc; padding: 6px; font-family: monospace; font-size: 12px; }
+  #log div { padding: 1px 0; }
+  .log-push { color: #1565c0; }
+</style>
+</head>
+<body>
+<h2>CTI 테스트</h2>
+<p id="conn" class="off">WebSocket 연결 안 됨</p>
+<p>
+  <input id="loginId" placeholder="loginId (예: agent1)" value="agent1">
+  <button onclick="addAgent()">상담원 추가</button>
+</p>
+<table>
+  <thead>
+    <tr><th>loginId</th><th>이름</th><th>내선</th><th>상태</th><th>이석 사유</th><th>콜</th><th>큐 배정 (다음 로그인부터 적용)</th><th>조작</th></tr>
+  </thead>
+  <tbody id="agents"></tbody>
+</table>
+<div id="loghead">
+  <h3>로그</h3>
+  <button onclick="clearLog()">비우기</button>
+</div>
+<div id="log"></div>
+
+<script>
+const rows = new Map();      // loginId -> tr
+const subscribed = new Set();
+let allQueues = [];
+
+const client = new StompJs.Client({
+  brokerURL: `ws://${location.host}/ws`,
+  onConnect: () => {
+    setConn(true);
+    subscribed.forEach(id => subscribe(id));
+  },
+  onWebSocketClose: () => setConn(false),
+});
+client.activate();
+
+function setConn(on) {
+  const el = document.getElementById('conn');
+  el.className = on ? 'on' : 'off';
+  el.textContent = on ? 'WebSocket 연결됨' : 'WebSocket 끊김 (재연결 시도 중)';
+}
+
+function subscribe(loginId) {
+  client.subscribe(`/topic/agents/${loginId}`, msg => {
+    const s = JSON.parse(msg.body);
+    log('push', msg.body);
+    render(s);
+  });
+}
+
+async function addAgent(loginId) {
+  const id = loginId || document.getElementById('loginId').value.trim();
+  if (!id || subscribed.has(id)) return;
+  subscribed.add(id);
+  if (client.connected) subscribe(id);
+  ensureRow(id);
+  loadQueues(id);
+}
+
+function ensureRow(loginId) {
+  if (rows.has(loginId)) return rows.get(loginId);
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${loginId}</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+    <td class="queues">불러오는 중...</td>
+    <td>
+      <button onclick="api('${loginId}','login')">로그인</button>
+      <button onclick="api('${loginId}','unpause')">해제</button>
+      <button onclick="pause('${loginId}')">이석</button>
+      <button onclick="api('${loginId}','logout')">로그아웃</button>
+    </td>`;
+  document.getElementById('agents').appendChild(tr);
+  rows.set(loginId, tr);
+  return tr;
+}
+
+// 큐 배정 셀: 전체 큐 체크박스 + 저장. 체크 상태는 서버 배정으로 초기화한다
+async function loadQueues(loginId) {
+  const cell = rows.get(loginId).children[6];
+  const res = await fetch(`/api/v1/agents/${loginId}/queues`);
+  if (!res.ok) {
+    cell.textContent = '조회 실패';
+    return;
+  }
+  const assigned = await res.json();
+  cell.innerHTML = allQueues.map(q =>
+    `<label><input type="checkbox" value="${q}" ${assigned.includes(q) ? 'checked' : ''}>${q}</label>`
+  ).join('') + `<button onclick="saveQueues('${loginId}')">저장</button>`;
+}
+
+async function saveQueues(loginId) {
+  const checked = [...rows.get(loginId).children[6].querySelectorAll('input:checked')].map(i => i.value);
+  const res = await fetch(`/api/v1/agents/${loginId}/queues`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(checked),
+  });
+  if (res.ok) loadQueues(loginId);
+}
+
+function render(s) {
+  const tr = ensureRow(s.loginId);
+  const td = tr.children;
+  td[1].textContent = s.name ?? '-';
+  td[2].textContent = s.extension ?? '-';
+  td[3].innerHTML = `<span class="badge ${s.status}">${s.status}</span>`;
+  td[4].textContent = s.pauseReason ?? '-';
+  td[5].textContent = s.callId ? `${s.callId} (${s.callDirection})` : '-';
+}
+
+async function api(loginId, action, body) {
+  await fetch(`/api/v1/agents/${loginId}/${action}`, {
+    method: 'POST',
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+function pause(loginId) {
+  const reason = prompt('이석 사유', 'lunch');
+  if (reason) api(loginId, 'pause', { reason });
+}
+
+function log(kind, line) {
+  const el = document.getElementById('log');
+  const div = document.createElement('div');
+  div.className = 'log-' + kind;
+  div.textContent = `[${new Date().toLocaleTimeString()}] ${line}`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('log').innerHTML = '';
+}
+
+// 초기화: 전체 큐 목록 → 로그인된 세션
+fetch('/api/v1/queues').then(r => r.json()).then(list => {
+  allQueues = list;
+  return fetch('/api/v1/agents').then(r => r.json());
+}).then(list => {
+  list.forEach(s => { addAgent(s.loginId); render(s); });
+});
+</script>
+</body>
+</html>
