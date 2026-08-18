@@ -4,11 +4,13 @@ import com.itsconv.cti.agent.AgentRepository.AgentRecord;
 import com.itsconv.cti.agent.domain.AgentSession;
 import com.itsconv.cti.agent.domain.AgentStatus;
 import com.itsconv.cti.agent.domain.PauseReason;
+import com.itsconv.cti.agent.event.AgentStateChangedEvent;
 import com.itsconv.cti.ami.AmiQueueActions;
 import java.util.List;
 import java.util.NoSuchElementException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -19,6 +21,7 @@ public class AgentService {
     private final AgentRepository repository;
     private final AgentSessionRegistry registry;
     private final AmiQueueActions queueActions;
+    private final ApplicationEventPublisher eventPublisher;
 
     public AgentSession login(String loginId) {
         AgentRecord agent = repository.findByLoginId(loginId).orElseThrow(() -> new NoSuchElementException("unknown agent: %s".formatted(loginId)));
@@ -45,6 +48,7 @@ public class AgentService {
             throw e;
         }
         log.info("agent login: loginId={} extension={} queues={} state={} reason={}", loginId, agent.extension(), queues, session.getStatus(), session.getPauseReason());
+        publishState(session);
         return session;
     }
 
@@ -54,6 +58,7 @@ public class AgentService {
         session.logout();
         registry.remove(session.getAgentId());
         log.info("agent logout: loginId={} state={}", loginId, session.getStatus());
+        publishState(session);
     }
 
     public AgentSession pause(String loginId, String reason) {
@@ -67,6 +72,7 @@ public class AgentService {
         session.queues().forEach(queue -> queueActions.pause(queue, session.getQueueInterface(), reason));
         session.pause(reason);
         log.info("agent paused: loginId={} reason={} state={}", loginId, reason, session.getStatus());
+        publishState(session);
         return session;
     }
 
@@ -78,6 +84,7 @@ public class AgentService {
         session.queues().forEach(queue -> queueActions.unpause(queue, session.getQueueInterface()));
         session.unpause();
         log.info("agent unpaused: loginId={} state={}", loginId, session.getStatus());
+        publishState(session);
         return session;
     }
 
@@ -85,6 +92,7 @@ public class AgentService {
         registry.findByInterface(queueInterface).ifPresent(session -> {
             session.callConnected(callId, direction);
             log.info("agent on call: loginId={} callId={} state={}", session.getLoginId(), callId, session.getStatus());
+            publishState(session);
         });
     }
 
@@ -93,11 +101,16 @@ public class AgentService {
             session.queueInboundCallEnded();
             session.queues().forEach(queue -> queueActions.pause(queue, session.getQueueInterface(), PauseReason.ACW));
             log.info("agent acw: loginId={} callId={} state={} reason={}", session.getLoginId(), session.getCallId(), session.getStatus(), session.getPauseReason());
+            publishState(session);
         });
     }
 
     public List<AgentSession> sessions() {
         return registry.all();
+    }
+
+    private void publishState(AgentSession session) {
+        eventPublisher.publishEvent(new AgentStateChangedEvent(session.getLoginId(), session.getName(), session.getExtension(), session.getStatus().name(), session.getPauseReason(), session.getCallId(), session.getCallDirection()));
     }
 
     private AgentSession required(String loginId) {

@@ -26,7 +26,8 @@ class AgentServiceTest {
     void setUp() {
         registry = new AgentSessionRegistry();
         queueActions = new RecordingQueueActions();
-        service = new AgentService(null, registry, queueActions);
+        service = new AgentService(null, registry, queueActions, event -> {
+        });
     }
 
     @Test
