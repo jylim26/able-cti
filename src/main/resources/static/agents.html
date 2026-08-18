@@ -24,6 +24,7 @@
   #log { height: 260px; overflow-y: scroll; border: 1px solid #ccc; padding: 6px; font-family: monospace; font-size: 12px; }
   #log div { padding: 1px 0; }
   .log-push { color: #1565c0; }
+  .log-error { color: #c62828; }
 </style>
 </head>
 <body>
@@ -70,7 +71,7 @@ function subscribe(loginId) {
   client.subscribe(`/topic/agents/${loginId}`, msg => {
     const s = JSON.parse(msg.body);
     log('push', msg.body);
-    render(s);
+    if (s.status) render(s);
   });
 }
 
@@ -92,6 +93,8 @@ function ensureRow(loginId) {
       <button onclick="api('${loginId}','login')">로그인</button>
       <button onclick="api('${loginId}','unpause')">해제</button>
       <button onclick="pause('${loginId}')">이석</button>
+      <button onclick="api('${loginId}','pause',{reason:'OUTBOUND'})">아웃바운드 이석</button>
+      <button onclick="clickToCall('${loginId}')">발신</button>
       <button onclick="api('${loginId}','logout')">로그아웃</button>
     </td>`;
   document.getElementById('agents').appendChild(tr);
@@ -134,16 +137,33 @@ function render(s) {
 }
 
 async function api(loginId, action, body) {
-  await fetch(`/api/v1/agents/${loginId}/${action}`, {
+  const res = await fetch(`/api/v1/agents/${loginId}/${action}`, {
     method: 'POST',
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (!res.ok) log('error', `${action} 실패: ${await res.text()}`);
 }
 
 function pause(loginId) {
   const reason = prompt('이석 사유', 'lunch');
   if (reason) api(loginId, 'pause', { reason });
+}
+
+async function clickToCall(loginId) {
+  const number = prompt('고객 번호', '1234');
+  if (!number) return;
+  const res = await fetch('/api/v1/calls', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ loginId, number }),
+  });
+  if (res.ok) {
+    const { callId } = await res.json();
+    log('push', `발신 접수 callId=${callId}`);
+  } else {
+    log('error', `발신 실패: ${await res.text()}`);
+  }
 }
 
 function log(kind, line) {
