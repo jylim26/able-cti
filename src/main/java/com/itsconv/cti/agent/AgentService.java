@@ -66,7 +66,7 @@ public class AgentService {
         if (reason == null || reason.isBlank()) {
             throw new IllegalArgumentException("pause reason required");
         }
-        if (PauseReason.isReserved(reason)) {
+        if (PauseReason.isSystemOnly(reason)) {
             throw new IllegalArgumentException("reserved pause reason: %s".formatted(reason));
         }
         AgentSession session = required(loginId);
@@ -102,6 +102,14 @@ public class AgentService {
             session.queueInboundCallEnded();
             session.queues().forEach(queue -> queueActions.pause(queue, session.getQueueInterface(), PauseReason.ACW));
             log.info("agent acw: loginId={} callId={} state={} reason={}", session.getLoginId(), session.getCallId(), session.getStatus(), session.getPauseReason());
+            publishState(session);
+        });
+    }
+
+    public void outboundCallEnded(String queueInterface) {
+        registry.findByInterface(queueInterface).ifPresent(session -> {
+            session.normalCallEnded();
+            log.info("agent outbound ended: loginId={} state={} reason={}", session.getLoginId(), session.getStatus(), session.getPauseReason());
             publishState(session);
         });
     }

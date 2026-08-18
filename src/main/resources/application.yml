@@ -23,3 +23,9 @@ asterisk:
     port: 5038
     username: cti
     password: ctisecret
+
+# 클릭투콜 Originate. 개발환경 고객 역할은 내선 1234라 from-internal로 충분하다
+cti:
+  outbound:
+    context: from-internal
+    ring-timeout-ms: 15000

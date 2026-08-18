@@ -11,6 +11,7 @@ import lombok.Getter;
 public class Call {
 
     private final String linkedid;
+    private final CallDirection direction;
     private final String callerNumber;
     private final String calledNumber;
 
@@ -23,15 +24,22 @@ public class Call {
     private String agent;
     private Instant answeredAt;
 
-    private Call(String linkedid, String callerNumber, String calledNumber) {
+    private Call(String linkedid, CallDirection direction, String callerNumber, String calledNumber) {
         this.linkedid = linkedid;
+        this.direction = direction;
         this.callerNumber = callerNumber;
         this.calledNumber = calledNumber;
         this.state = CallState.RINGING;
     }
 
     public static Call start(String linkedid, String callerNumber, String calledNumber) {
-        return new Call(linkedid, callerNumber, calledNumber);
+        return new Call(linkedid, CallDirection.INBOUND, callerNumber, calledNumber);
+    }
+
+    public static Call startOutbound(String linkedid, String agentInterface, String agentExtension, String customerNumber) {
+        Call call = new Call(linkedid, CallDirection.OUTBOUND, agentExtension, customerNumber);
+        call.agent = agentInterface;
+        return call;
     }
 
     public synchronized void enqueued(String queueName) {
@@ -54,6 +62,12 @@ public class Call {
         requireState(CallState.QUEUED);
         this.agent = agentInterface;
         this.ringingAgent = null;
+        this.answeredAt = Instant.now();
+        this.state = CallState.CONNECTED;
+    }
+
+    public synchronized void customerAnswered() {
+        requireState(CallState.RINGING);
         this.answeredAt = Instant.now();
         this.state = CallState.CONNECTED;
     }

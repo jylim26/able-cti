@@ -30,9 +30,13 @@ public class AgentCallEventListener {
         }
         commandExecutor.submit(() -> {
             try {
-                agentService.queueInboundCallEnded(event.agentInterface());
+                if ("INBOUND".equals(event.direction())) {
+                    agentService.queueInboundCallEnded(event.agentInterface());
+                } else {
+                    agentService.outboundCallEnded(event.agentInterface());
+                }
             } catch (Exception e) {
-                log.error("failed to enter ACW: interface={}", event.agentInterface(), e);
+                log.error("failed to handle call end: interface={}", event.agentInterface(), e);
             }
         });
     }

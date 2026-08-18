@@ -75,6 +75,31 @@ class AgentServiceTest {
         assertNull(session.getCallId());
     }
 
+    @Test
+    void 상담원이_OUTBOUND_사유로_이석할_수_있음() {
+        AgentSession session = loggedInReady();
+
+        service.pause("agent1", PauseReason.OUTBOUND);
+
+        assertEquals(AgentStatus.PAUSED, session.getStatus());
+        assertEquals(PauseReason.OUTBOUND, session.getPauseReason());
+    }
+
+    @Test
+    void 아웃바운드_종료는_통화_전_이석으로_복귀하고_큐_명령이_없음() {
+        AgentSession session = loggedInReady();
+        service.pause("agent1", PauseReason.OUTBOUND);
+        queueActions.sent.clear();
+        service.callConnected(INTERFACE, CALL_ID, "OUTBOUND");
+
+        service.outboundCallEnded(INTERFACE);
+
+        assertEquals(AgentStatus.PAUSED, session.getStatus());
+        assertEquals(PauseReason.OUTBOUND, session.getPauseReason());
+        assertNull(session.getCallId());
+        assertTrue(queueActions.sent.isEmpty());
+    }
+
     private AgentSession loggedInReady() {
         AgentSession session = AgentSession.login(1L, "agent1", "상담원1", "1000", INTERFACE, List.of("queue01"));
         session.unpause();

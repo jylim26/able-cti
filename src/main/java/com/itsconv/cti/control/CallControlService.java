@@ -1,0 +1,44 @@
+package com.itsconv.cti.control;
+
+import com.itsconv.cti.agent.AgentSessionRegistry;
+import com.itsconv.cti.agent.domain.AgentSession;
+import com.itsconv.cti.agent.domain.AgentStatus;
+import com.itsconv.cti.agent.domain.PauseReason;
+import com.itsconv.cti.ami.AmiOriginateActions;
+import com.itsconv.cti.call.PendingOutboundRegistry;
+import java.util.NoSuchElementException;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class CallControlService {
+
+    private final AgentSessionRegistry sessions;
+    private final PendingOutboundRegistry pendingOutbound;
+    private final AmiOriginateActions originateActions;
+    private final OutboundProperties properties;
+
+    public String clickToCall(String loginId, String number) {
+        if (number == null || number.isBlank()) {
+            throw new IllegalArgumentException("number required");
+        }
+        AgentSession session = sessions.findByLoginId(loginId).orElseThrow(() -> new NoSuchElementException("agent %s not logged in".formatted(loginId)));
+        if (session.getStatus() != AgentStatus.PAUSED || !PauseReason.OUTBOUND.equals(session.getPauseReason())) {
+            throw new IllegalStateException("agent %s must be paused with reason %s to make a call".formatted(loginId, PauseReason.OUTBOUND));
+        }
+        String channelId = "cti-" + UUID.randomUUID();
+        pendingOutbound.register(channelId, loginId, session.getQueueInterface(), session.getExtension(), number);
+        try {
+            originateActions.originate(session.getQueueInterface(), channelId, properties.context(), number, properties.ringTimeoutMs());
+        } catch (RuntimeException e) {
+            pendingOutbound.remove(channelId);
+            throw e;
+        }
+        log.info("originate sent: loginId={} number={} callId={}", loginId, number, channelId);
+        return channelId;
+    }
+}
