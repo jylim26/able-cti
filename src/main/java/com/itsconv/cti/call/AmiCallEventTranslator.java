@@ -2,6 +2,8 @@ package com.itsconv.cti.call;
 
 import com.itsconv.cti.ami.CtiCallStartedEvent;
 import com.itsconv.cti.call.domain.Call;
+import com.itsconv.cti.call.event.CallConnectedEvent;
+import com.itsconv.cti.call.event.CallEndedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.asteriskjava.manager.ManagerEventListener;
@@ -12,6 +14,7 @@ import org.asteriskjava.manager.event.HangupEvent;
 import org.asteriskjava.manager.event.ManagerEvent;
 import org.asteriskjava.manager.event.NewChannelEvent;
 import org.asteriskjava.manager.event.QueueCallerJoinEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -22,6 +25,7 @@ public class AmiCallEventTranslator implements ManagerEventListener {
     private static final String INBOUND = "INBOUND";
 
     private final CallRegistry registry;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public void onManagerEvent(ManagerEvent event) {
@@ -90,6 +94,7 @@ public class AmiCallEventTranslator implements ManagerEventListener {
         registry.find(e.getLinkedId()).ifPresent(call -> {
             call.connected(e.getInterface());
             log.info("agent connected: linkedid={} interface={} state={}", call.getLinkedid(), e.getInterface(), call.getState());
+            eventPublisher.publishEvent(new CallConnectedEvent(call.getLinkedid(), e.getInterface(), INBOUND));
         });
     }
 
@@ -100,6 +105,7 @@ public class AmiCallEventTranslator implements ManagerEventListener {
             if (lastLegEnded) {
                 registry.remove(call.getLinkedid());
                 log.info("call ended: linkedid={} state={} answered={}", call.getLinkedid(), call.getState(), call.isAnswered());
+                eventPublisher.publishEvent(new CallEndedEvent(call.getLinkedid(), call.getAgent(), call.isAnswered()));
             }
         });
     }

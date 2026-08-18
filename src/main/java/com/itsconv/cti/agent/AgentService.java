@@ -78,6 +78,21 @@ public class AgentService {
         return session;
     }
 
+    public void callConnected(String queueInterface, String callId, String direction) {
+        registry.findByInterface(queueInterface).ifPresent(session -> {
+            session.callConnected(callId, direction);
+            log.info("agent on call: extension={} callId={} state={}", session.getExtension(), callId, session.getStatus());
+        });
+    }
+
+    public void queueInboundCallEnded(String queueInterface) {
+        registry.findByInterface(queueInterface).ifPresent(session -> {
+            session.queueInboundCallEnded();
+            session.queues().forEach(queue -> queueActions.pause(queue, session.getQueueInterface(), PauseReason.ACW));
+            log.info("agent acw: extension={} callId={} state={} reason={}", session.getExtension(), session.getCallId(), session.getStatus(), session.getPauseReason());
+        });
+    }
+
     public List<AgentSession> sessions() {
         return registry.all();
     }

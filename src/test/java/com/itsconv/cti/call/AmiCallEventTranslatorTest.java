@@ -8,6 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.itsconv.cti.ami.CtiCallStartedEvent;
 import com.itsconv.cti.call.domain.Call;
 import com.itsconv.cti.call.domain.CallState;
+import com.itsconv.cti.call.event.CallConnectedEvent;
+import com.itsconv.cti.call.event.CallEndedEvent;
+import java.util.ArrayList;
+import java.util.List;
 import org.asteriskjava.manager.event.AgentCalledEvent;
 import org.asteriskjava.manager.event.AgentConnectEvent;
 import org.asteriskjava.manager.event.AgentRingNoAnswerEvent;
@@ -27,11 +31,13 @@ class AmiCallEventTranslatorTest {
 
     private CallRegistry registry;
     private AmiCallEventTranslator translator;
+    private List<Object> published;
 
     @BeforeEach
     void setUp() {
         registry = new CallRegistry();
-        translator = new AmiCallEventTranslator(registry);
+        published = new ArrayList<>();
+        translator = new AmiCallEventTranslator(registry, published::add);
     }
 
     @Test
@@ -88,11 +94,15 @@ class AmiCallEventTranslatorTest {
         assertEquals(AGENT_INTERFACE, call.getAgent());
         assertNull(call.getRingingAgent());
         assertTrue(call.isAnswered());
+        assertTrue(published.contains(new CallConnectedEvent(LINKEDID, AGENT_INTERFACE, "INBOUND")));
 
         translator.onManagerEvent(hangup(AGENT_UNIQUEID, LINKEDID, AGENT_CHANNEL));
+        assertFalse(published.contains(new CallEndedEvent(LINKEDID, AGENT_INTERFACE, true)));
+
         translator.onManagerEvent(hangup(LINKEDID, LINKEDID, CUSTOMER_CHANNEL));
         assertEquals(CallState.ENDED, call.getState());
         assertEquals(0, registry.size());
+        assertTrue(published.contains(new CallEndedEvent(LINKEDID, AGENT_INTERFACE, true)));
     }
 
     @Test
@@ -110,6 +120,8 @@ class AmiCallEventTranslatorTest {
         assertEquals(CallState.ENDED, call.getState());
         assertFalse(call.isAnswered());
         assertEquals(0, registry.size());
+        assertTrue(published.contains(new CallEndedEvent(LINKEDID, null, false)));
+        assertFalse(published.stream().anyMatch(e -> e instanceof CallConnectedEvent));
     }
 
     @Test
