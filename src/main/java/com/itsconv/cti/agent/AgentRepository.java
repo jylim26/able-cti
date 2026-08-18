@@ -20,6 +20,17 @@ public class AgentRepository {
         return jdbcClient.sql("select queue_name from agent_queues where agent_id = :agentId order by queue_name").param("agentId", agentId).query(String.class).list();
     }
 
+    public List<String> allQueues() {
+        return jdbcClient.sql("select name from queues order by name").query(String.class).list();
+    }
+
+    public void replaceQueues(long agentId, List<String> queues) {
+        jdbcClient.sql("delete from agent_queues where agent_id = :agentId").param("agentId", agentId).update();
+        for (String queue : queues) {
+            jdbcClient.sql("insert into agent_queues (agent_id, queue_name) values (:agentId, :queue)").param("agentId", agentId).param("queue", queue).update();
+        }
+    }
+
     public record AgentRecord(long id, String loginId, String name, String extension) {
     }
 }

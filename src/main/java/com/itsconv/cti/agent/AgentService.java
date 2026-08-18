@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
@@ -107,6 +108,24 @@ public class AgentService {
 
     public List<AgentSession> sessions() {
         return registry.all();
+    }
+
+    public List<String> assignedQueues(String loginId) {
+        AgentRecord agent = repository.findByLoginId(loginId).orElseThrow(() -> new NoSuchElementException("unknown agent: %s".formatted(loginId)));
+        return repository.queuesOf(agent.id());
+    }
+
+    @Transactional
+    public List<String> updateQueues(String loginId, List<String> queues) {
+        AgentRecord agent = repository.findByLoginId(loginId).orElseThrow(() -> new NoSuchElementException("unknown agent: %s".formatted(loginId)));
+        List<String> known = repository.allQueues();
+        List<String> unknown = queues.stream().filter(q -> !known.contains(q)).toList();
+        if (!unknown.isEmpty()) {
+            throw new IllegalArgumentException("unknown queues: %s".formatted(unknown));
+        }
+        repository.replaceQueues(agent.id(), queues);
+        log.info("agent queues updated: loginId={} queues={}", loginId, queues);
+        return repository.queuesOf(agent.id());
     }
 
     private void publishState(AgentSession session) {

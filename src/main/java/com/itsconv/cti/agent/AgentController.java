@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -27,6 +28,16 @@ public class AgentController {
     @PostMapping("/{loginId}/login")
     public AgentResponse login(@PathVariable String loginId) {
         return AgentResponse.from(service.login(loginId));
+    }
+
+    @GetMapping("/{loginId}/queues")
+    public List<String> assignedQueues(@PathVariable String loginId) {
+        return service.assignedQueues(loginId);
+    }
+
+    @PutMapping("/{loginId}/queues")
+    public List<String> updateQueues(@PathVariable String loginId, @RequestBody List<String> queues) {
+        return service.updateQueues(loginId, queues);
     }
 
     @PostMapping("/{loginId}/logout")
