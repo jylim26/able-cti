@@ -34,12 +34,14 @@ docs 하위 폴더는 성격으로 나뉜다. 새 문서는 성격에 맞는 폴
 | [docs/adr/0003](docs/adr/0003-dialplan-optin-tracking.md) | 추적할 콜은 dialplan이 알려준다 |
 | [docs/adr/0004](docs/adr/0004-call-state-machine.md) | 콜 상태는 4개, 벨울림은 상태가 아니다 |
 | [docs/adr/0005](docs/adr/0005-agent-state-model.md) | 상담원 상태는 4개, 후처리는 상태가 아니라 이석 사유다 |
+| [docs/adr/0006](docs/adr/0006-spring-events-between-modules.md) | 모듈 사이의 통지는 Spring 이벤트로 한다 |
 | [docs/domain/asterisk-call-model.md](docs/domain/asterisk-call-model.md) | 채널·브리지·context 등 Asterisk가 통화를 보는 방식 |
 | [docs/domain/queue-call-events.md](docs/domain/queue-call-events.md) | 큐 콜에서 실제로 오는 AMI 이벤트와 함정. 상태 머신 설계의 입력 |
 | [docs/domain/queue-member-events.md](docs/domain/queue-member-events.md) | 큐 멤버 투입/이석 시 오는 AMI 이벤트와 함정. 상담원 상태 구현의 입력 |
 | [docs/notes/ami.md](docs/notes/ami.md) | AMI 연결 (`ami` 모듈) |
 | [docs/notes/call-assembly.md](docs/notes/call-assembly.md) | 콜 조립 (`call` 모듈) |
 | [docs/notes/agent.md](docs/notes/agent.md) | 상담원 상태 (`agent` 모듈) |
+| [docs/notes/threading.md](docs/notes/threading.md) | 스레드 모델. 어떤 스레드가 있고 각 스레드에서 뭘 해도 되는가 |
 | [docs/troubleshooting/0001](docs/troubleshooting/0001-registered-but-unreachable.md) | 등록은 되어 있는데 벨이 안 간다 — 프록시 매핑 소멸과 qualify |
 
 문서는 [ADR-0001](docs/adr/0001-ami-over-ari.md)의 톤으로 쓴다.
@@ -50,7 +52,7 @@ docs 하위 폴더는 성격으로 나뉜다. 새 문서는 성격에 맞는 폴
 
 ## 현재 상태
 
-Date: 2026-08-16
+Date: 2026-08-18
 
 ### 되어 있는 것
 
@@ -64,9 +66,10 @@ Date: 2026-08-16
 | 콜 상태 머신 | RINGING→QUEUED→CONNECTED→ENDED 전이와 벨울림 기록 ([ADR-0004](docs/adr/0004-call-state-machine.md)) |
 | AMI 명령 경로 | 큐 멤버 투입/이석/제거 Action 전송 (`ami` 모듈 `AmiQueueActions`) |
 | 상담원 상태 | 로그인·이석·해제·로그아웃 REST. 상태 변경 창구는 `AgentService` 하나 (`agent` 모듈, [ADR-0005](docs/adr/0005-agent-state-model.md)) |
+| 콜-상담원 연동 | 콜 연결/종료를 Spring 이벤트로 발행, 상담원 ON_CALL·ACW 전이 ([ADR-0006](docs/adr/0006-spring-events-between-modules.md)) |
 | DB 접근 | `agents`·`agent_queues`에서 상담원과 큐 배정 조회 (JdbcClient) |
-| 단위 테스트 | 번역기 9개 + 상담원 세션 13개 통과 |
-| 실통화 검증 | 콜 6개 시나리오, 상담원 상태 8개 시나리오 확인 완료 |
+| 단위 테스트 | 번역기 9개 + 상담원 세션 13개 + 콜 이벤트 배선 4개 통과 |
+| 실통화 검증 | 콜 6개 시나리오, 상담원 상태 8개 시나리오 확인 완료. ON_CALL·ACW 전이는 실통화 검증 전 |
 
 설계 결정: [ADR-0002](docs/adr/0002-linkedid-as-call-id.md) 통화 식별자는 linkedid,
 [ADR-0003](docs/adr/0003-dialplan-optin-tracking.md) 추적할 콜은 dialplan이 UserEvent로 알려준다.
@@ -76,22 +79,20 @@ Date: 2026-08-16
 
 ### 로드맵 (의존 순서)
 
-1. **콜-상담원 연동** — 콜 이벤트로 ON_CALL·ACW 전이 배선.
-   도메인과 테스트는 준비됨 ([상담원 노트](docs/notes/agent.md)의 "아직 없는 것")
-2. **사용자-내선 분리** — 사용자와 내선을 분리하고 관리자가 사전 매핑.
+1. **사용자-내선 분리** — 사용자와 내선을 분리하고 관리자가 사전 매핑.
    로그인 시 매핑된 내선을 조회해 투입, membername에 사용자 식별을 싣는다
-3. **WebSocket 푸시** — 상담원별 토픽으로 콜·상태 이벤트 전달.
+2. **WebSocket 푸시** — 상담원별 토픽으로 콜·상태 이벤트 전달.
    착신 팝업의 기반이고, 이후 모든 기능의 눈 역할이라 앞에 둔다
-4. **아웃바운드 (클릭투콜)** — Originate와 콜 방향 구분 확정
+3. **아웃바운드 (클릭투콜)** — Originate와 콜 방향 구분 확정
    (ADR-0002에 callId 후보만 적어둠)
-5. **받기·끊기·착신 알림** — 단말 제어 첫 발
-6. **보류/해제** — 코드 전에 Asterisk 실측 스파이크 먼저.
+4. **받기·끊기·착신 알림** — 단말 제어 첫 발
+5. **보류/해제** — 코드 전에 Asterisk 실측 스파이크 먼저.
    채널별 역할과 bridge 추적(콜 모델 확장)이 선행 조건
-7. **호전환 (블라인드 → 협의) → 3자 통화** — 소유권 이전 포함
-8. **읽기 모델·상태 이력·통계** — calls/참여 이력 영속화, 상담원 상태 이력 테이블
-9. **녹취** — 자동 녹취, 조회, 후처리
+6. **호전환 (블라인드 → 협의) → 3자 통화** — 소유권 이전 포함
+7. **읽기 모델·상태 이력·통계** — calls/참여 이력 영속화, 상담원 상태 이력 테이블
+8. **녹취** — 자동 녹취, 조회, 후처리
 
-통화 제어(6·7)의 완료 판정은 이벤트 도착 순서가 아니라
+통화 제어(5·6)의 완료 판정은 이벤트 도착 순서가 아니라
 최종 bridge 구성으로 한다. 실패한 명령은 복구하지 않고 격리한다.
 
 재동기화(재시작 시 세션 복원, 외부 조작 흡수)는 당장 하지 않기로 했다.

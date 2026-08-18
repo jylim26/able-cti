@@ -1,12 +1,13 @@
 # 상담원 상태
 
-Date: 2026-08-16
+Date: 2026-08-18
 
 ## Goal
 
 `agent` 모듈은 상담원 세션과 상태를 소유한다.
 
-로그인(큐 투입), 이석/해제, 로그아웃(큐 제거)을 REST로 받아 AMI 명령으로 바꾼다.
+로그인(큐 투입), 이석/해제, 로그아웃(큐 제거)을 REST로 받아 AMI 명령으로 바꾸고,
+콜 이벤트를 받아 ON_CALL·ACW 전이를 만든다.
 상태를 바꾸는 창구는 `AgentService` 하나다. CLI 등 외부 조작은
 MVP에서 지원하지 않는다 (아래 "외부 조작은 MVP에서 다루지 않는다").
 
@@ -17,8 +18,8 @@ MVP에서 지원하지 않는다 (아래 "외부 조작은 MVP에서 다루지 �
 
 ## Structure
 
-    REST (AgentController)
-         ↓
+    REST (AgentController)    콜 이벤트 (AgentCallEventListener)
+         ↓                    ↓ call 모듈의 이벤트 구독 (ADR-0006)
     AgentService              명령 흐름: AMI 전송 → 세션 반영
          ↓                ↘
     AgentSessionRegistry      AmiQueueActions (ami 모듈)
@@ -71,6 +72,35 @@ MVP에서 외부 조작은 지원하지 않는 조작이고,
 "외부 상태 재동기화" 요구와 함께 넣는다.
 그때 쓸 실측 기록은 [큐 멤버 이벤트](../domain/queue-member-events.md)에 있다.
 
+### 콜 이벤트 배선 — ON_CALL과 ACW
+
+`call` 모듈이 발행하는 이벤트([ADR-0006](../adr/0006-spring-events-between-modules.md))를
+`AgentCallEventListener`가 받아 `AgentService`로 넘긴다.
+상담원 찾기는 이벤트에 실린 인터페이스(`PJSIP/1000`)로
+`AgentSessionRegistry.findByInterface`를 쓴다. 세션이 없으면(외부 조작 등)
+조용히 무시한다 — 번역기의 `ifPresent` 규칙과 같다.
+
+| 이벤트 | 처리 | 스레드 |
+|---|---|---|
+| `CallConnectedEvent` | 세션 ON_CALL 전이. AMI 명령 없음 | AMI 리더 스레드에서 바로 |
+| `CallEndedEvent` (answered) | 세션 ACW 전이 + 큐에 `QueuePause(ACW)` | 리스너의 단일 스레드 executor |
+| `CallEndedEvent` (미응답) | 아무것도 안 함. 포기호는 상담원과 연결된 적이 없다 | — |
+
+종료 처리를 스레드로 넘기는 이유는 규율 1(리스너에서 `sendAction` 금지)이다.
+Spring 이벤트는 동기라 리스너가 발행자(AMI 리더 스레드)에서 돈다.
+
+**ACW 진입은 "AMI 전송이 먼저" 규칙의 예외다.** 세션을 먼저 ACW로
+바꾸고 `QueuePause`를 보낸다. 통화 종료는 이미 일어난 사실이라
+세션이 거부할 수 없다. AMI를 먼저 보내고 실패 시 세션을 안 바꾸면
+ON_CALL에 영원히 갇힌다. `QueuePause`가 실패하면 로그만 남고
+세션(ACW)과 Asterisk(unpause)가 어긋난다 — MVP 수용.
+
+지금 추적하는 콜은 큐 인바운드뿐이라 종료는 전부
+`queueInboundCallEnded`(ACW행)다. `normalCallEnded`는
+아웃바운드·내선 추적이 생길 때 배선한다.
+
+ACW 해제는 기존 unpause REST 그대로다. 자동 해제 타이머는 없다 (ADR-0005).
+
 ### 통화 중 이석/해제는 복귀 목적지를 바꾼다
 
 ON_CALL에서 이석/해제는 상태를 바꾸지 않는다.
@@ -88,7 +118,9 @@ ON_CALL의 것이 아니다.
 1. **리스너에서 `sendAction`을 부르지 않는다.**
    이벤트를 전달하는 스레드가 명령 응답까지 읽는 구조라서,
    리스너 안에서 응답을 기다리면 자기 자신을 기다리게 된다.
-   이벤트를 받아 명령을 보내야 하는 날이 오면 별도 스레드로 넘긴다.
+   이벤트를 받아 명령을 보내야 하면 별도 스레드로 넘긴다.
+   첫 사례가 `AgentCallEventListener`의 executor다.
+   스레드별 허용 작업은 [스레드 모델](threading.md)에 있다.
 2. **세션 메서드는 `synchronized`다.**
    지금 세션을 건드리는 스레드는 REST 요청뿐이지만,
    콜 연동이 붙으면 이벤트 펌프가 다시 들어온다.
@@ -108,9 +140,10 @@ ON_CALL의 것이 아니다.
 
 ## 아직 없는 것
 
-- **ON_CALL·ACW 전이의 배선.** `AgentSession`에는 `callConnected`와
-  `normalCallEnded`/`queueInboundCallEnded`가 있고 테스트도 통과하지만,
-  콜 이벤트와 아직 잇지 않았다. 다음 단계다.
+- **`normalCallEnded`의 배선.** 큐 인바운드가 아닌 통화(아웃바운드, 내선)는
+  아직 추적하지 않아서 이 전이로 들어오는 길이 없다. 도메인과 테스트만 있다.
+- **ACW 진입의 틈.** 마지막 Hangup과 `QueuePause(ACW)` 도착 사이에
+  큐가 다음 콜을 꽂을 수 있다. 문제가 되면 큐 `wrapuptime`으로 막는다.
 - **멀티 큐의 이석 단위.** 이석은 상담원 단위라 모든 큐에 일괄 적용된다.
   큐별로 따로 이석하는 요구가 생기면 세션 모델을 다시 본다.
 - **외부 조작 재동기화.** CLI로 이석/해제/제거를 하면 세션과 Asterisk가
@@ -124,9 +157,10 @@ ON_CALL의 것이 아니다.
 
 ## Verification
 
-1. `./gradlew test` — 세션 전이 테스트 13개.
-   ADR-0005의 표를 한 줄씩 옮긴 것이다.
+1. `./gradlew test` — 세션 전이 테스트 13개(ADR-0005의 표를 한 줄씩 옮긴 것)와
+   콜 이벤트 배선 테스트 4개(`AgentServiceTest`).
 2. 실검증. 앱을 띄우고 REST로 조작하며 큐 상태를 대조한다.
+   콜 연동은 실통화로 ON_CALL·ACW 전이와 큐 멤버의 `paused:ACW`를 확인한다.
 
 ### 실검증 결과
 
