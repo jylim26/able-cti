@@ -83,7 +83,7 @@ Date: 2026-08-19
 | 받기·끊기 | POST `/api/v1/calls/{callId}/answer`·`/hangup`. 받기는 울리는 채널에 talk NOTIFY(기준 단말 405HD), 끊기는 상담원 레그 Hangup ([ADR-0011](docs/adr/0011-answer-hangup.md)) |
 | DB 접근 | `agents`·`agent_queues`에서 상담원과 큐 배정 조회 (JdbcClient) |
 | 단위 테스트 | 번역기 17개 + 상담원 세션 13개 + 상담원 서비스 6개 + 통화 제어 11개 + 콜 푸시 4개 통과 |
-| 실통화 검증 | 콜 6개 + 상담원 REST 9개 + 아웃바운드 4개 + 콜 푸시 7개 시나리오 확인 완료 ([푸시 노트](docs/notes/push.md)) |
+| 실통화 검증 | 콜 6개 + 상담원 REST 9개 + 아웃바운드 4개 + 콜 푸시 7개 + 받기·끊기 4개 시나리오 확인 완료 ([푸시 노트](docs/notes/push.md), [통화 제어 노트](docs/notes/control.md)) |
 
 설계 결정: [ADR-0002](docs/adr/0002-linkedid-as-call-id.md) 통화 식별자는 linkedid,
 [ADR-0003](docs/adr/0003-dialplan-optin-tracking.md) 추적할 콜은 dialplan이 UserEvent로 알려준다.
@@ -100,8 +100,8 @@ Date: 2026-08-19
 3. ~~아웃바운드 (클릭투콜)~~ — 완료 ([ADR-0009](docs/adr/0009-outbound-click-to-call.md),
    [실측](docs/domain/outbound-call-events.md), [노트](docs/notes/control.md))
 4. ~~받기·끊기·착신 알림~~ — 완료 ([ADR-0010](docs/adr/0010-call-event-push.md),
-   [ADR-0011](docs/adr/0011-answer-hangup.md)). 받기·끊기 실통화 검증은 아직
-   (405HD talk NOTIFY 스파이크는 통과)
+   [ADR-0011](docs/adr/0011-answer-hangup.md)). 실통화 검증 완료
+   ([통화 제어 노트](docs/notes/control.md))
 5. **보류/해제** — 코드 전에 Asterisk 실측 스파이크 먼저.
    채널별 역할과 bridge 추적(콜 모델 확장)이 선행 조건
 6. **호전환 (블라인드 → 협의) → 3자 통화** — 소유권 이전 포함

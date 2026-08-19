@@ -88,3 +88,21 @@ Date: 2026-08-19
 단말 미등록 실패(`OutboundCallFailedEvent` 푸시)는 개발환경 내선이
 전부 등록돼 있어 실통화로는 못 봤다. 단위 테스트와
 [실측](../domain/outbound-call-events.md)의 단말 미등록 시나리오로 확인했다.
+
+### 받기·끊기 (2026-08-19)
+
+상담원 단말은 405HD(내선 1000), 고객 콜은 AMI Originate(PJSIP/1234)로 만들었다.
+
+| 시나리오 | 기대 | 결과 |
+|---|---|---|
+| 벨 울리는 중 [받기] | 202, 405HD 자동응답, ANSWERED 푸시, ON_CALL | 통과 |
+| 통화 중 [끊기] | 202, 상담원 레그만 Hangup, 고객 레그는 Asterisk가 정리, ENDED, ACW | 통과 |
+| 벨 울리는 중 끊기 | 409 (CONNECTED 아님) | 통과 |
+| 종료된 콜 받기 / 미로그인 상담원 끊기 | 404 | 통과 |
+
+검증하며 안 것:
+
+- **Local 채널 originate로는 추적 콜을 못 만든다.**
+  `channel originate Local/0212345678@from-trunk ...`은 UserEvent가
+  Local의 두 번째 반쪽(;2)에서 나와 "첫 채널만 통화 생성" 가드에 걸린다.
+  테스트 콜은 실단말 채널(PJSIP/1234)을 Originate해서 만들어야 한다.
