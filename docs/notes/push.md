@@ -62,6 +62,28 @@ CTI 기능 전반의 개발용 조작판이다. 지금 있는 것:
   상담원별로 구독한다 (ADR-0008).
 - STOMP 클라이언트는 CDN(@stomp/stompjs)이라 오프라인에서는 안 뜬다. 개발 도구라 수용.
 
+## 실통화 검증 결과 (2026-08-19)
+
+테스트 페이지에서 소프트폰 2대(1000 상담원, 1234 고객)로 확인했다.
+
+| 시나리오 | 결과 |
+|---|---|
+| 인바운드 정상 | RINGING → ANSWERED → ENDED. 착신 표시가 뜨고 지워짐 |
+| 상담원 무응답 | 벨 타임아웃마다 RINGING_CANCELED, 큐 재시도마다 RINGING 다시 옴 |
+| 고객 포기 (벨 중 끊음) | RINGING_CANCELED만 오고 ENDED는 안 옴 (상담원 미확정 종료는 드롭) |
+| 두 상담원 이관 | RINGING·RINGING_CANCELED가 벨 울리는 상담원 토픽에만 감 |
+| 아웃바운드 정상 | DIALING → ANSWERED → ENDED |
+| 아웃바운드 실패 | 내선 미등록이면 OUTBOUND_FAILED |
+| 인바운드 회귀 | 인바운드에서 DIALING 안 나감 (DialBegin 가드 동작) |
+
+실측에서 안 것:
+
+- **상담원 무응답 아웃바운드는 OUTBOUND_FAILED가 아니라 ENDED(answered=false)다.**
+  내선이 등록돼 있으면 채널이 생겨서 콜로 등록되고, 무응답 종료는 Hangup 경로를 탄다.
+  OUTBOUND_FAILED는 채널 자체가 안 생긴 경우(미등록 등)에만 온다.
+- **OUTBOUND_FAILED의 reason은 Asterisk 숫자 코드다** (미등록이면 `0`).
+  사람이 읽을 문구가 필요해지면 그때 매핑한다.
+
 ## 아직 없는 것
 
 - **구독 인증 없음.** 누구나 아무 토픽이나 구독할 수 있다.

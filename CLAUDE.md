@@ -81,7 +81,7 @@ Date: 2026-08-19
 | 아웃바운드 (클릭투콜) | POST `/api/v1/calls`. ChannelId 예약, pending 선등록, DialEnd 응답 감지, PAUSED(OUTBOUND) 게이트 ([ADR-0009](docs/adr/0009-outbound-click-to-call.md), `control` 모듈) |
 | DB 접근 | `agents`·`agent_queues`에서 상담원과 큐 배정 조회 (JdbcClient) |
 | 단위 테스트 | 번역기 17개 + 상담원 세션 13개 + 상담원 서비스 6개 + 발신 게이트 5개 + 콜 푸시 4개 통과 |
-| 실통화 검증 | 콜 6개 + 상담원 REST 9개 + 아웃바운드 4개 시나리오(정상·게이트 거부·상담원 무응답·인바운드 회귀) 확인 완료 |
+| 실통화 검증 | 콜 6개 + 상담원 REST 9개 + 아웃바운드 4개 + 콜 푸시 7개 시나리오 확인 완료 ([푸시 노트](docs/notes/push.md)) |
 
 설계 결정: [ADR-0002](docs/adr/0002-linkedid-as-call-id.md) 통화 식별자는 linkedid,
 [ADR-0003](docs/adr/0003-dialplan-optin-tracking.md) 추적할 콜은 dialplan이 UserEvent로 알려준다.
@@ -97,8 +97,9 @@ Date: 2026-08-19
    콜 이벤트 푸시는 착신 알림(4번)에서
 3. ~~아웃바운드 (클릭투콜)~~ — 완료 ([ADR-0009](docs/adr/0009-outbound-click-to-call.md),
    [실측](docs/domain/outbound-call-events.md), [노트](docs/notes/control.md))
-4. **받기·끊기·착신 알림** — 착신 알림 완료 ([ADR-0010](docs/adr/0010-call-event-push.md)),
-   실통화 검증은 아직. 받기·끊기가 단말 제어 첫 발
+4. **받기·끊기·착신 알림** — 착신 알림 완료·실통화 검증 완료
+   ([ADR-0010](docs/adr/0010-call-event-push.md), [푸시 노트](docs/notes/push.md)).
+   받기·끊기가 단말 제어 첫 발. 받기는 단말 지원 실측 스파이크 먼저
 5. **보류/해제** — 코드 전에 Asterisk 실측 스파이크 먼저.
    채널별 역할과 bridge 추적(콜 모델 확장)이 선행 조건
 6. **호전환 (블라인드 → 협의) → 3자 통화** — 소유권 이전 포함
