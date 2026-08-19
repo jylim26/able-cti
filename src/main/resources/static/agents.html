@@ -132,7 +132,8 @@ async function saveQueues(loginId) {
 function onCallEvent(loginId, e) {
   const cell = ensureRow(loginId).children[5];
   if (e.event === 'RINGING') {
-    cell.innerHTML = `<span class="ringing">☎ 착신 ${e.data.customerNumber} (${e.data.queueName})</span>`;
+    cell.innerHTML = `<span class="ringing">☎ 착신 ${e.data.customerNumber} (${e.data.queueName})</span>
+      <button onclick="callControl('${e.data.callId}','answer','${loginId}')">받기</button>`;
   } else if (e.event === 'DIALING') {
     cell.innerHTML = `<span class="ringing">☎ 발신 ${e.data.customerNumber}</span>`;
   } else if (cell.querySelector('.ringing')) {
@@ -147,7 +148,18 @@ function render(s) {
   td[2].textContent = s.extension ?? '-';
   td[3].innerHTML = `<span class="badge ${s.status}">${s.status}</span>`;
   td[4].textContent = s.pauseReason ?? '-';
-  td[5].textContent = s.callId ? `${s.callId} (${s.callDirection})` : '-';
+  td[5].innerHTML = s.status === 'ON_CALL'
+    ? `${s.callId} (${s.callDirection}) <button onclick="callControl('${s.callId}','hangup','${s.loginId}')">끊기</button>`
+    : (s.callId ? `${s.callId} (${s.callDirection})` : '-');
+}
+
+async function callControl(callId, action, loginId) {
+  const res = await fetch(`/api/v1/calls/${callId}/${action}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ loginId }),
+  });
+  if (!res.ok) log('error', `${action} 실패: ${await res.text()}`);
 }
 
 async function api(loginId, action, body) {
