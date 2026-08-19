@@ -4,8 +4,12 @@ import com.itsconv.cti.agent.AgentSessionRegistry;
 import com.itsconv.cti.agent.domain.AgentSession;
 import com.itsconv.cti.agent.domain.AgentStatus;
 import com.itsconv.cti.agent.domain.PauseReason;
+import com.itsconv.cti.ami.AmiChannelActions;
 import com.itsconv.cti.ami.AmiOriginateActions;
+import com.itsconv.cti.call.CallRegistry;
 import com.itsconv.cti.call.PendingOutboundRegistry;
+import com.itsconv.cti.call.domain.Call;
+import com.itsconv.cti.call.domain.CallState;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +23,9 @@ public class CallControlService {
 
     private final AgentSessionRegistry sessions;
     private final PendingOutboundRegistry pendingOutbound;
+    private final CallRegistry calls;
     private final AmiOriginateActions originateActions;
+    private final AmiChannelActions channelActions;
     private final OutboundProperties properties;
 
     public String clickToCall(String loginId, String number) {
@@ -40,5 +46,36 @@ public class CallControlService {
         }
         log.info("originate sent: loginId={} number={} callId={}", loginId, number, channelId);
         return channelId;
+    }
+
+    // 벨이 울리는 상담원 본인만 받을 수 있다 (ADR-0011)
+    public void answer(String callId, String loginId) {
+        Call call = requireCall(callId);
+        AgentSession session = requireSession(loginId);
+        String channel = call.getRingingChannel();
+        if (channel == null || !session.getQueueInterface().equals(call.getRingingAgent())) {
+            throw new IllegalStateException("call %s is not ringing for agent %s".formatted(callId, loginId));
+        }
+        channelActions.notifyTalk(channel);
+        log.info("answer notify sent: callId={} loginId={} channel={}", callId, loginId, channel);
+    }
+
+    // 통화 중인 상담원 본인만, 상담원 레그만 끊는다 (ADR-0011)
+    public void hangup(String callId, String loginId) {
+        Call call = requireCall(callId);
+        AgentSession session = requireSession(loginId);
+        if (call.getState() != CallState.CONNECTED || !session.getQueueInterface().equals(call.getAgent())) {
+            throw new IllegalStateException("call %s is not connected for agent %s".formatted(callId, loginId));
+        }
+        channelActions.hangup(call.getAgentChannel());
+        log.info("hangup sent: callId={} loginId={} channel={}", callId, loginId, call.getAgentChannel());
+    }
+
+    private Call requireCall(String callId) {
+        return calls.find(callId).orElseThrow(() -> new NoSuchElementException("call not found: %s".formatted(callId)));
+    }
+
+    private AgentSession requireSession(String loginId) {
+        return sessions.findByLoginId(loginId).orElseThrow(() -> new NoSuchElementException("agent %s not logged in".formatted(loginId)));
     }
 }

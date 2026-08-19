@@ -21,7 +21,9 @@ public class Call {
     private CallState state;
     private String queueName;
     private String ringingAgent;
+    private String ringingChannel;
     private String agent;
+    private String agentChannel;
     private Instant answeredAt;
 
     private Call(String linkedid, CallDirection direction, String callerNumber, String calledNumber) {
@@ -36,9 +38,10 @@ public class Call {
         return new Call(linkedid, CallDirection.INBOUND, callerNumber, calledNumber);
     }
 
-    public static Call startOutbound(String linkedid, String agentInterface, String agentExtension, String customerNumber) {
+    public static Call startOutbound(String linkedid, String agentInterface, String agentExtension, String customerNumber, String agentChannel) {
         Call call = new Call(linkedid, CallDirection.OUTBOUND, agentExtension, customerNumber);
         call.agent = agentInterface;
+        call.agentChannel = agentChannel;
         return call;
     }
 
@@ -48,22 +51,26 @@ public class Call {
         this.state = CallState.QUEUED;
     }
 
-    public synchronized void agentRinging(String agentInterface) {
+    public synchronized void agentRinging(String agentInterface, String channel) {
         this.ringingAgent = agentInterface;
+        this.ringingChannel = channel;
     }
 
     public synchronized boolean agentRingCanceled(String agentInterface) {
         if (agentInterface != null && agentInterface.equals(this.ringingAgent)) {
             this.ringingAgent = null;
+            this.ringingChannel = null;
             return true;
         }
         return false;
     }
 
-    public synchronized void connected(String agentInterface) {
+    public synchronized void connected(String agentInterface, String channel) {
         requireState(CallState.QUEUED);
         this.agent = agentInterface;
+        this.agentChannel = channel;
         this.ringingAgent = null;
+        this.ringingChannel = null;
         this.answeredAt = Instant.now();
         this.state = CallState.CONNECTED;
     }

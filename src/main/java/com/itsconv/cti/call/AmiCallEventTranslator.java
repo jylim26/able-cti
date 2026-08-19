@@ -99,7 +99,7 @@ public class AmiCallEventTranslator implements ManagerEventListener {
     private boolean startOutbound(NewChannelEvent e) {
         // pending 클릭투콜 요청을 실제 아웃바운드 Call로 전환한다.
         return pendingOutbound.consume(e.getUniqueId()).map(pending -> {
-            Call call = Call.startOutbound(e.getLinkedid(), pending.agentInterface(), pending.agentExtension(), pending.customerNumber());
+            Call call = Call.startOutbound(e.getLinkedid(), pending.agentInterface(), pending.agentExtension(), pending.customerNumber(), e.getChannel());
             call.legStarted(e.getUniqueId(), e.getChannel());
             registry.put(call);
             log.info("call started: linkedid={} direction=OUTBOUND agent={} called={} state={}", call.getLinkedid(), call.getAgent(), call.getCalledNumber(), call.getState());
@@ -116,7 +116,7 @@ public class AmiCallEventTranslator implements ManagerEventListener {
 
     private void onAgentCalled(AgentCalledEvent e) {
         registry.find(e.getLinkedId()).ifPresent(call -> {
-            call.agentRinging(e.getInterface());
+            call.agentRinging(e.getInterface(), e.getDestChannel());
             log.info("agent ringing: linkedid={} interface={} state={}", call.getLinkedid(), e.getInterface(), call.getState());
 
             // 인바운드 통화가 분배된 상담원에게 RINGING을 알린다.
@@ -136,7 +136,7 @@ public class AmiCallEventTranslator implements ManagerEventListener {
 
     private void onAgentConnect(AgentConnectEvent e) {
         registry.find(e.getLinkedId()).ifPresent(call -> {
-            call.connected(e.getInterface());
+            call.connected(e.getInterface(), e.getDestChannel());
             log.info("agent connected: linkedid={} interface={} state={}", call.getLinkedid(), e.getInterface(), call.getState());
             eventPublisher.publishEvent(new CallConnectedEvent(call.getLinkedid(), e.getInterface(), call.getDirection().name()));
         });

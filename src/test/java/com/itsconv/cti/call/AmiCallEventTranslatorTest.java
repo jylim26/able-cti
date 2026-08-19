@@ -100,12 +100,15 @@ class AmiCallEventTranslatorTest {
         translator.onManagerEvent(agentCalled(LINKEDID, AGENT_INTERFACE));
         assertEquals(CallState.QUEUED, call.getState());
         assertEquals(AGENT_INTERFACE, call.getRingingAgent());
+        assertEquals(AGENT_CHANNEL, call.getRingingChannel());
         assertTrue(published.contains(new CallRingingEvent(LINKEDID, AGENT_INTERFACE, "01012345678", "queue01")));
 
         translator.onManagerEvent(agentConnect(LINKEDID, AGENT_CHANNEL, AGENT_INTERFACE));
         assertEquals(CallState.CONNECTED, call.getState());
         assertEquals(AGENT_INTERFACE, call.getAgent());
+        assertEquals(AGENT_CHANNEL, call.getAgentChannel());
         assertNull(call.getRingingAgent());
+        assertNull(call.getRingingChannel());
         assertTrue(call.isAnswered());
         assertTrue(published.contains(new CallConnectedEvent(LINKEDID, AGENT_INTERFACE, "INBOUND")));
 
@@ -231,6 +234,7 @@ class AmiCallEventTranslatorTest {
         assertEquals(CallState.RINGING, call.getState());
         assertEquals(AGENT_INTERFACE, call.getAgent());
         assertEquals("01012345678", call.getCalledNumber());
+        assertEquals(AGENT_CHANNEL, call.getAgentChannel());
         assertEquals(1, call.legs().size());
 
         translator.onManagerEvent(dialBegin(OUTBOUND_CHANNEL_ID, null, "dev-1787047478.10"));
@@ -377,6 +381,7 @@ class AmiCallEventTranslatorTest {
         event.setUniqueId(linkedid);
         event.setChannel(CUSTOMER_CHANNEL);
         event.setInterface(agentInterface);
+        event.setDestChannel(agentInterface + "-00000002");
         return event;
     }
 
@@ -395,6 +400,7 @@ class AmiCallEventTranslatorTest {
         event.setUniqueId(linkedid);
         event.setChannel(channel);
         event.setInterface(agentInterface);
+        event.setDestChannel(channel);
         return event;
     }
 
