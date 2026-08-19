@@ -1,7 +1,6 @@
 package com.itsconv.cti.push;
 
 import com.itsconv.cti.agent.event.AgentStateChangedEvent;
-import com.itsconv.cti.call.event.OutboundCallFailedEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -15,11 +14,6 @@ public class AgentStatePushListener {
 
     @EventListener
     public void onAgentStateChanged(AgentStateChangedEvent event) {
-        messagingTemplate.convertAndSend("/topic/agents/%s".formatted(event.loginId()), event);
-    }
-
-    @EventListener
-    public void onOutboundCallFailed(OutboundCallFailedEvent event) {
-        messagingTemplate.convertAndSend("/topic/agents/%s".formatted(event.loginId()), event);
+        messagingTemplate.convertAndSend("/topic/agents/%s".formatted(event.loginId()), AgentStateMessage.from(event));
     }
 }
