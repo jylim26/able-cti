@@ -20,8 +20,9 @@
   .badge.PAUSED { background: #ef6c00; }
   .badge.LOGGED_OUT { background: #757575; }
   .queues label { margin-right: 8px; white-space: nowrap; }
+  .ringing { color: #c62828; font-weight: bold; }
   #loghead { display: flex; align-items: center; gap: 10px; }
-  #log { height: 260px; overflow-y: scroll; border: 1px solid #ccc; padding: 6px; font-family: monospace; font-size: 12px; }
+  #log { height: 260px; overflow-y: scroll; resize: both; border: 1px solid #ccc; padding: 6px; font-family: monospace; font-size: 12px; }
   #log div { padding: 1px 0; }
   .log-push { color: #1565c0; }
   .log-error { color: #c62828; }
@@ -71,7 +72,8 @@ function subscribe(loginId) {
   client.subscribe(`/topic/agents/${loginId}`, msg => {
     const s = JSON.parse(msg.body);
     log('push', msg.body);
-    if (s.status) render(s);
+    if (s.type === 'AGENT') render(s.data);
+    else if (s.type === 'CALL') onCallEvent(loginId, s);
   });
 }
 
@@ -124,6 +126,18 @@ async function saveQueues(loginId) {
     body: JSON.stringify(checked),
   });
   if (res.ok) loadQueues(loginId);
+}
+
+// 콜 셀: RINGING이면 착신 표시, 그 외 콜 이벤트는 착신 표시만 지운다 (통화 표시는 상담원 스냅샷이 그린다)
+function onCallEvent(loginId, e) {
+  const cell = ensureRow(loginId).children[5];
+  if (e.event === 'RINGING') {
+    cell.innerHTML = `<span class="ringing">☎ 착신 ${e.data.customerNumber} (${e.data.queueName})</span>`;
+  } else if (e.event === 'DIALING') {
+    cell.innerHTML = `<span class="ringing">☎ 발신 ${e.data.customerNumber}</span>`;
+  } else if (cell.querySelector('.ringing')) {
+    cell.textContent = '-';
+  }
 }
 
 function render(s) {
