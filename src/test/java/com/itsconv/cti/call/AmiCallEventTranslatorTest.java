@@ -10,13 +10,17 @@ import com.itsconv.cti.call.domain.Call;
 import com.itsconv.cti.call.domain.CallDirection;
 import com.itsconv.cti.call.domain.CallState;
 import com.itsconv.cti.call.event.CallConnectedEvent;
+import com.itsconv.cti.call.event.CallDialingEvent;
 import com.itsconv.cti.call.event.CallEndedEvent;
+import com.itsconv.cti.call.event.CallRingingCanceledEvent;
+import com.itsconv.cti.call.event.CallRingingEvent;
 import com.itsconv.cti.call.event.OutboundCallFailedEvent;
 import java.util.ArrayList;
 import java.util.List;
 import org.asteriskjava.manager.event.AgentCalledEvent;
 import org.asteriskjava.manager.event.AgentConnectEvent;
 import org.asteriskjava.manager.event.AgentRingNoAnswerEvent;
+import org.asteriskjava.manager.event.DialBeginEvent;
 import org.asteriskjava.manager.event.DialEndEvent;
 import org.asteriskjava.manager.event.HangupEvent;
 import org.asteriskjava.manager.event.NewChannelEvent;
@@ -96,6 +100,7 @@ class AmiCallEventTranslatorTest {
         translator.onManagerEvent(agentCalled(LINKEDID, AGENT_INTERFACE));
         assertEquals(CallState.QUEUED, call.getState());
         assertEquals(AGENT_INTERFACE, call.getRingingAgent());
+        assertTrue(published.contains(new CallRingingEvent(LINKEDID, AGENT_INTERFACE, "01012345678", "queue01")));
 
         translator.onManagerEvent(agentConnect(LINKEDID, AGENT_CHANNEL, AGENT_INTERFACE));
         assertEquals(CallState.CONNECTED, call.getState());
@@ -128,6 +133,7 @@ class AmiCallEventTranslatorTest {
         assertEquals(CallState.ENDED, call.getState());
         assertFalse(call.isAnswered());
         assertEquals(0, registry.size());
+        assertTrue(published.contains(new CallRingingCanceledEvent(LINKEDID, AGENT_INTERFACE)));
         assertTrue(published.contains(new CallEndedEvent(LINKEDID, null, false, "INBOUND")));
         assertFalse(published.stream().anyMatch(e -> e instanceof CallConnectedEvent));
     }
@@ -148,6 +154,7 @@ class AmiCallEventTranslatorTest {
         translator.onManagerEvent(hangup("1755000000.101", LINKEDID, "PJSIP/1000-00000002"));
         assertEquals(CallState.QUEUED, call.getState());
         assertNull(call.getRingingAgent());
+        assertTrue(published.contains(new CallRingingCanceledEvent(LINKEDID, "PJSIP/1000")));
 
         translator.onManagerEvent(newChannel("1755000000.102", LINKEDID, "PJSIP/1001-00000003"));
         translator.onManagerEvent(agentCalled(LINKEDID, "PJSIP/1001"));
@@ -193,6 +200,7 @@ class AmiCallEventTranslatorTest {
         translator.onManagerEvent(agentRingNoAnswer(LINKEDID, "PJSIP/1000"));
 
         assertEquals("PJSIP/1001", call.getRingingAgent());
+        assertFalse(published.stream().anyMatch(e -> e instanceof CallRingingCanceledEvent));
     }
 
     @Test
@@ -225,9 +233,15 @@ class AmiCallEventTranslatorTest {
         assertEquals("01012345678", call.getCalledNumber());
         assertEquals(1, call.legs().size());
 
+        translator.onManagerEvent(dialBegin(OUTBOUND_CHANNEL_ID, null, "dev-1787047478.10"));
+        assertFalse(published.stream().anyMatch(e -> e instanceof CallDialingEvent));
+
         translator.onManagerEvent(newChannel("dev-1787047478.10", OUTBOUND_CHANNEL_ID, OUTBOUND_CUSTOMER_CHANNEL));
         assertEquals(2, call.legs().size());
         assertEquals(CallState.RINGING, call.getState());
+
+        translator.onManagerEvent(dialBegin(OUTBOUND_CHANNEL_ID, AGENT_CHANNEL, "dev-1787047478.10"));
+        assertTrue(published.contains(new CallDialingEvent(OUTBOUND_CHANNEL_ID, AGENT_INTERFACE, "01012345678")));
 
         translator.onManagerEvent(dialEnd(OUTBOUND_CHANNEL_ID, "dev-1787047478.10", "ANSWER"));
         assertEquals(CallState.CONNECTED, call.getState());
@@ -252,6 +266,29 @@ class AmiCallEventTranslatorTest {
         Call call = registry.find(OUTBOUND_CHANNEL_ID).orElseThrow();
         assertEquals(CallState.RINGING, call.getState());
         assertFalse(published.stream().anyMatch(e -> e instanceof CallConnectedEvent));
+    }
+
+    @Test
+    void 아웃바운드_응답_후의_DialBegin은_DIALING을_만들지_않음() {
+        pendingOutbound.register(OUTBOUND_CHANNEL_ID, "agent1", AGENT_INTERFACE, "1000", "01012345678");
+        translator.onManagerEvent(newChannel(OUTBOUND_CHANNEL_ID, OUTBOUND_CHANNEL_ID, AGENT_CHANNEL));
+        translator.onManagerEvent(newChannel("dev-1787047478.10", OUTBOUND_CHANNEL_ID, OUTBOUND_CUSTOMER_CHANNEL));
+        translator.onManagerEvent(dialEnd(OUTBOUND_CHANNEL_ID, "dev-1787047478.10", "ANSWER"));
+
+        translator.onManagerEvent(dialBegin(OUTBOUND_CHANNEL_ID, AGENT_CHANNEL, "dev-1787047478.99"));
+
+        assertFalse(published.stream().anyMatch(e -> e instanceof CallDialingEvent));
+    }
+
+    @Test
+    void 인바운드_콜의_DialBegin은_DIALING을_만들지_않음() {
+        translator.onManagerEvent(newChannel(LINKEDID, LINKEDID, CUSTOMER_CHANNEL));
+        translator.onManagerEvent(ctiCallStarted(LINKEDID, CUSTOMER_CHANNEL, "01012345678", "0212345678"));
+        translator.onManagerEvent(queueCallerJoin(LINKEDID, CUSTOMER_CHANNEL));
+
+        translator.onManagerEvent(dialBegin(LINKEDID, CUSTOMER_CHANNEL, AGENT_UNIQUEID));
+
+        assertFalse(published.stream().anyMatch(e -> e instanceof CallDialingEvent));
     }
 
     @Test
@@ -366,6 +403,14 @@ class AmiCallEventTranslatorTest {
         event.setUniqueId(uniqueId);
         event.setLinkedId(linkedid);
         event.setChannel(channel);
+        return event;
+    }
+
+    private DialBeginEvent dialBegin(String linkedid, String channel, String destUniqueId) {
+        DialBeginEvent event = new DialBeginEvent(this);
+        event.setLinkedId(linkedid);
+        event.setChannel(channel);
+        event.setDestUniqueId(destUniqueId);
         return event;
     }
 

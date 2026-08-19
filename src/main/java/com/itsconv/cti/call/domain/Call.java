@@ -52,10 +52,12 @@ public class Call {
         this.ringingAgent = agentInterface;
     }
 
-    public synchronized void agentRingCanceled(String agentInterface) {
+    public synchronized boolean agentRingCanceled(String agentInterface) {
         if (agentInterface != null && agentInterface.equals(this.ringingAgent)) {
             this.ringingAgent = null;
+            return true;
         }
+        return false;
     }
 
     public synchronized void connected(String agentInterface) {
