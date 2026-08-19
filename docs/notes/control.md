@@ -5,8 +5,10 @@ Date: 2026-08-19
 ## Goal
 
 `control` 모듈은 CTI가 Asterisk에 통화 명령을 보내는 창구다.
-지금 있는 것은 클릭투콜 하나다. 설계는 [ADR-0009](../adr/0009-outbound-click-to-call.md),
+지금 있는 것은 클릭투콜, 받기, 끊기다.
+클릭투콜 설계는 [ADR-0009](../adr/0009-outbound-click-to-call.md),
 실측 근거는 [아웃바운드 콜 이벤트](../domain/outbound-call-events.md)에 있다.
+받기·끊기 설계는 [ADR-0011](../adr/0011-answer-hangup.md)에 있다.
 
 ---
 
@@ -32,6 +34,24 @@ Date: 2026-08-19
 종료에서 통화 전 상태(PAUSED, 사유=OUTBOUND)로 복귀한다.
 아웃바운드 종료는 ACW에 들어가지 않는다 (`AgentCallEventListener`가 방향으로 분기).
 
+## 받기·끊기
+
+    POST /api/v1/calls/{callId}/answer {loginId}   → 202
+    POST /api/v1/calls/{callId}/hangup {loginId}   → 202
+
+    CallControlService     본인 확인 → 대상 채널 결정
+         ↓
+    AmiChannelActions      받기: PJSIPNotify(울리는 채널, Event=talk)
+                           끊기: Hangup(상담원 채널)          (ami 모듈)
+
+- 받기는 벨이 울리는 상담원 본인만 (`ringingAgent` 대조),
+  끊기는 CONNECTED 통화의 상담원 본인만 (`agent` 대조).
+- 대상 채널은 `Call`이 기억한다. 울리는 채널은 `AgentCalled`의 DestChannel,
+  상담원 채널은 `AgentConnect`의 DestChannel (아웃바운드는 첫 레그).
+- 202는 명령이 나갔다는 뜻이다. 결과는 AMI 이벤트가 콜 상태와 푸시로 알린다.
+- 전제 조건: 서버 `res_pjsip_notify`(+`pjsip_notify.conf`),
+  단말 405HD `voip/talk_event/enabled=1`. 자세한 건 ADR-0011.
+
 ## 설정
 
     cti:
@@ -46,7 +66,8 @@ Date: 2026-08-19
 
 - 자동응답 헤더. 개발은 단말(MicroSIP) 설정이나 명령행 응답으로 검증했다.
   서버가 `Call-Info` 헤더로 요청하는 방식은 지원 단말이 생길 때 붙인다.
-- 발신 중 취소(내가 걸었는데 끊고 싶다). 받기·끊기 단계에서 함께 다룬다.
+- 발신 중 취소(내가 걸었는데 끊고 싶다). 끊기가 CONNECTED만 허용해서 아직 없다.
+  벨 울리는 콜의 거절과 함께 큐 재분배 실측 후 다룬다 (ADR-0011).
 
 ---
 
