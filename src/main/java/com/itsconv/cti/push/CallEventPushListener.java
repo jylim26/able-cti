@@ -4,6 +4,8 @@ import com.itsconv.cti.agent.AgentSessionRegistry;
 import com.itsconv.cti.call.event.CallConnectedEvent;
 import com.itsconv.cti.call.event.CallDialingEvent;
 import com.itsconv.cti.call.event.CallEndedEvent;
+import com.itsconv.cti.call.event.CallHeldEvent;
+import com.itsconv.cti.call.event.CallResumedEvent;
 import com.itsconv.cti.call.event.CallRingingCanceledEvent;
 import com.itsconv.cti.call.event.CallRingingEvent;
 import com.itsconv.cti.call.event.OutboundCallFailedEvent;
@@ -39,6 +41,16 @@ public class CallEventPushListener {
     @EventListener
     public void onCallConnected(CallConnectedEvent event) {
         send(event.agentInterface(), CallEventMessage.answered(event));
+    }
+
+    @EventListener
+    public void onCallHeld(CallHeldEvent event) {
+        send(event.agentInterface(), CallEventMessage.held(event));
+    }
+
+    @EventListener
+    public void onCallResumed(CallResumedEvent event) {
+        send(event.agentInterface(), CallEventMessage.resumed(event));
     }
 
     @EventListener

@@ -7,6 +7,8 @@ import com.itsconv.cti.call.domain.CallState;
 import com.itsconv.cti.call.event.CallConnectedEvent;
 import com.itsconv.cti.call.event.CallDialingEvent;
 import com.itsconv.cti.call.event.CallEndedEvent;
+import com.itsconv.cti.call.event.CallHeldEvent;
+import com.itsconv.cti.call.event.CallResumedEvent;
 import com.itsconv.cti.call.event.CallRingingCanceledEvent;
 import com.itsconv.cti.call.event.CallRingingEvent;
 import com.itsconv.cti.call.event.OutboundCallFailedEvent;
@@ -16,6 +18,8 @@ import org.asteriskjava.manager.ManagerEventListener;
 import org.asteriskjava.manager.event.AgentCalledEvent;
 import org.asteriskjava.manager.event.AgentConnectEvent;
 import org.asteriskjava.manager.event.AgentRingNoAnswerEvent;
+import org.asteriskjava.manager.event.BridgeEnterEvent;
+import org.asteriskjava.manager.event.BridgeLeaveEvent;
 import org.asteriskjava.manager.event.DialBeginEvent;
 import org.asteriskjava.manager.event.DialEndEvent;
 import org.asteriskjava.manager.event.DialEvent;
@@ -51,6 +55,8 @@ public class AmiCallEventTranslator implements ManagerEventListener {
                 case DialBeginEvent e -> onDialBegin(e);
                 case DialEndEvent e -> onDialEnd(e);
                 case OriginateResponseEvent e -> onOriginateResponse(e);
+                case BridgeEnterEvent e -> onBridgeEnter(e);
+                case BridgeLeaveEvent e -> onBridgeLeave(e);
                 case HangupEvent e -> onHangup(e);
                 default -> { }
             }
@@ -183,6 +189,32 @@ public class AmiCallEventTranslator implements ManagerEventListener {
             log.warn("originate failed: callId={} loginId={} reason={}", e.getUniqueId(), pending.loginId(), e.getReason());
             eventPublisher.publishEvent(new OutboundCallFailedEvent(e.getUniqueId(), pending.loginId(), e.getReason()));
         });
+    }
+
+    private void onBridgeEnter(BridgeEnterEvent e) {
+        registry.find(e.getLinkedId()).ifPresent(call -> {
+            if (call.legEnteredBridge(e.getUniqueId(), e.getBridgeUniqueId())) {
+                publishHeldChange(call);
+            }
+        });
+    }
+
+    private void onBridgeLeave(BridgeLeaveEvent e) {
+        registry.find(e.getLinkedId()).ifPresent(call -> {
+            if (call.legLeftBridge(e.getUniqueId(), e.getBridgeUniqueId())) {
+                publishHeldChange(call);
+            }
+        });
+    }
+
+    // 보류 확정은 단일 이벤트가 아니라 bridge 구성 변화로 판정한다 (ADR-0012)
+    private void publishHeldChange(Call call) {
+        log.info("call {}: linkedid={} agent={}", call.isHeld() ? "held" : "resumed", call.getLinkedid(), call.getAgent());
+        if (call.isHeld()) {
+            eventPublisher.publishEvent(new CallHeldEvent(call.getLinkedid(), call.getAgent()));
+        } else {
+            eventPublisher.publishEvent(new CallResumedEvent(call.getLinkedid(), call.getAgent()));
+        }
     }
 
     private void onHangup(HangupEvent e) {

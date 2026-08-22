@@ -12,6 +12,8 @@ import com.itsconv.cti.call.domain.CallState;
 import com.itsconv.cti.call.event.CallConnectedEvent;
 import com.itsconv.cti.call.event.CallDialingEvent;
 import com.itsconv.cti.call.event.CallEndedEvent;
+import com.itsconv.cti.call.event.CallHeldEvent;
+import com.itsconv.cti.call.event.CallResumedEvent;
 import com.itsconv.cti.call.event.CallRingingCanceledEvent;
 import com.itsconv.cti.call.event.CallRingingEvent;
 import com.itsconv.cti.call.event.OutboundCallFailedEvent;
@@ -20,6 +22,8 @@ import java.util.List;
 import org.asteriskjava.manager.event.AgentCalledEvent;
 import org.asteriskjava.manager.event.AgentConnectEvent;
 import org.asteriskjava.manager.event.AgentRingNoAnswerEvent;
+import org.asteriskjava.manager.event.BridgeEnterEvent;
+import org.asteriskjava.manager.event.BridgeLeaveEvent;
 import org.asteriskjava.manager.event.DialBeginEvent;
 import org.asteriskjava.manager.event.DialEndEvent;
 import org.asteriskjava.manager.event.HangupEvent;
@@ -38,6 +42,10 @@ class AmiCallEventTranslatorTest {
     private static final String AGENT_INTERFACE = "PJSIP/1000";
     private static final String OUTBOUND_CHANNEL_ID = "cti-spike-b2";
     private static final String OUTBOUND_CUSTOMER_CHANNEL = "PJSIP/1234-0000000a";
+    private static final String HOLD_LOCAL1_UNIQUEID = "1755000000.110";
+    private static final String HOLD_LOCAL1_CHANNEL = "Local/1000@hold-00000001;1";
+    private static final String HOLD_LOCAL2_UNIQUEID = "1755000000.111";
+    private static final String HOLD_LOCAL2_CHANNEL = "Local/1000@hold-00000001;2";
 
     private CallRegistry registry;
     private PendingOutboundRegistry pendingOutbound;
@@ -340,6 +348,93 @@ class AmiCallEventTranslatorTest {
         translator.onManagerEvent(originateResponse(OUTBOUND_CHANNEL_ID, true, 4));
 
         assertFalse(published.stream().anyMatch(e -> e instanceof OutboundCallFailedEvent));
+    }
+
+    @Test
+    void 보류는_상담원과_hold_레그의_bridge_합류로_확정됨() {
+        Call call = connectedInboundCall();
+
+        translator.onManagerEvent(bridgeEnter(LINKEDID, "bridge-A"));
+        translator.onManagerEvent(bridgeEnter(AGENT_UNIQUEID, "bridge-A"));
+        assertFalse(call.isHeld());
+
+        translator.onManagerEvent(newChannel(HOLD_LOCAL1_UNIQUEID, LINKEDID, HOLD_LOCAL1_CHANNEL));
+        translator.onManagerEvent(newChannel(HOLD_LOCAL2_UNIQUEID, LINKEDID, HOLD_LOCAL2_CHANNEL));
+        translator.onManagerEvent(bridgeEnter(HOLD_LOCAL1_UNIQUEID, "bridge-B"));
+        translator.onManagerEvent(bridgeLeave(AGENT_UNIQUEID, "bridge-A"));
+        assertFalse(call.isHeld());
+
+        translator.onManagerEvent(bridgeEnter(AGENT_UNIQUEID, "bridge-B"));
+
+        assertTrue(call.isHeld());
+        assertEquals(CallState.CONNECTED, call.getState());
+        assertTrue(published.contains(new CallHeldEvent(LINKEDID, AGENT_INTERFACE)));
+    }
+
+    @Test
+    void 해제는_상담원의_hold_bridge_이탈로_확정되고_hold_레그_종료로_콜이_안_끝남() {
+        Call call = connectedInboundCall();
+        translator.onManagerEvent(bridgeEnter(LINKEDID, "bridge-A"));
+        translator.onManagerEvent(bridgeEnter(AGENT_UNIQUEID, "bridge-A"));
+        translator.onManagerEvent(newChannel(HOLD_LOCAL1_UNIQUEID, LINKEDID, HOLD_LOCAL1_CHANNEL));
+        translator.onManagerEvent(newChannel(HOLD_LOCAL2_UNIQUEID, LINKEDID, HOLD_LOCAL2_CHANNEL));
+        translator.onManagerEvent(bridgeEnter(HOLD_LOCAL1_UNIQUEID, "bridge-B"));
+        translator.onManagerEvent(bridgeLeave(AGENT_UNIQUEID, "bridge-A"));
+        translator.onManagerEvent(bridgeEnter(AGENT_UNIQUEID, "bridge-B"));
+        assertTrue(call.isHeld());
+
+        translator.onManagerEvent(bridgeLeave(AGENT_UNIQUEID, "bridge-B"));
+        assertFalse(call.isHeld());
+        assertTrue(published.contains(new CallResumedEvent(LINKEDID, AGENT_INTERFACE)));
+
+        translator.onManagerEvent(bridgeEnter(AGENT_UNIQUEID, "bridge-A"));
+        translator.onManagerEvent(bridgeLeave(HOLD_LOCAL1_UNIQUEID, "bridge-B"));
+        translator.onManagerEvent(hangup(HOLD_LOCAL1_UNIQUEID, LINKEDID, HOLD_LOCAL1_CHANNEL));
+        translator.onManagerEvent(hangup(HOLD_LOCAL2_UNIQUEID, LINKEDID, HOLD_LOCAL2_CHANNEL));
+
+        assertEquals(CallState.CONNECTED, call.getState());
+        assertTrue(registry.find(LINKEDID).isPresent());
+        assertEquals(1, published.stream().filter(e -> e instanceof CallResumedEvent).count());
+    }
+
+    @Test
+    void hold_레그가_아닌_채널과의_bridge_분리는_보류가_아님() {
+        Call call = connectedInboundCall();
+        translator.onManagerEvent(bridgeEnter(LINKEDID, "bridge-A"));
+        translator.onManagerEvent(bridgeEnter(AGENT_UNIQUEID, "bridge-A"));
+
+        translator.onManagerEvent(newChannel("1755000000.120", LINKEDID, "Local/1001@from-internal-00000002;1"));
+        translator.onManagerEvent(bridgeEnter("1755000000.120", "bridge-C"));
+        translator.onManagerEvent(bridgeLeave(AGENT_UNIQUEID, "bridge-A"));
+        translator.onManagerEvent(bridgeEnter(AGENT_UNIQUEID, "bridge-C"));
+
+        assertFalse(call.isHeld());
+        assertFalse(published.stream().anyMatch(e -> e instanceof CallHeldEvent));
+    }
+
+    private Call connectedInboundCall() {
+        translator.onManagerEvent(newChannel(LINKEDID, LINKEDID, CUSTOMER_CHANNEL));
+        translator.onManagerEvent(ctiCallStarted(LINKEDID, CUSTOMER_CHANNEL, "01012345678", "0212345678"));
+        translator.onManagerEvent(queueCallerJoin(LINKEDID, CUSTOMER_CHANNEL));
+        translator.onManagerEvent(newChannel(AGENT_UNIQUEID, LINKEDID, AGENT_CHANNEL));
+        translator.onManagerEvent(agentConnect(LINKEDID, AGENT_CHANNEL, AGENT_INTERFACE));
+        return registry.find(LINKEDID).orElseThrow();
+    }
+
+    private BridgeEnterEvent bridgeEnter(String uniqueId, String bridgeId) {
+        BridgeEnterEvent event = new BridgeEnterEvent(this);
+        event.setUniqueId(uniqueId);
+        event.setLinkedId(LINKEDID);
+        event.setBridgeUniqueId(bridgeId);
+        return event;
+    }
+
+    private BridgeLeaveEvent bridgeLeave(String uniqueId, String bridgeId) {
+        BridgeLeaveEvent event = new BridgeLeaveEvent(this);
+        event.setUniqueId(uniqueId);
+        event.setLinkedId(LINKEDID);
+        event.setBridgeUniqueId(bridgeId);
+        return event;
     }
 
     private NewChannelEvent newChannel(String uniqueId, String linkedid, String channel) {

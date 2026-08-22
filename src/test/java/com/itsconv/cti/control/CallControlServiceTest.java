@@ -148,6 +148,78 @@ class CallControlServiceTest {
         assertThrows(NoSuchElementException.class, () -> service.hangup("nope", "agent1"));
     }
 
+    @Test
+    void 통화_중인_상담원_본인의_보류는_hold_context로_Atxfer함() {
+        loggedIn();
+        connectedCall();
+
+        service.hold(LINKEDID, "agent1");
+
+        assertEquals(List.of("atxfer %s 1000 hold".formatted(AGENT_CHANNEL)), channelActions.sent);
+    }
+
+    @Test
+    void CONNECTED가_아닌_콜의_보류는_거부됨() {
+        loggedIn();
+        ringingCall();
+
+        assertThrows(IllegalStateException.class, () -> service.hold(LINKEDID, "agent1"));
+        assertTrue(channelActions.sent.isEmpty());
+    }
+
+    @Test
+    void 보류_중인_콜의_보류는_거부됨() {
+        loggedIn();
+        heldCall();
+
+        assertThrows(IllegalStateException.class, () -> service.hold(LINKEDID, "agent1"));
+        assertTrue(channelActions.sent.isEmpty());
+    }
+
+    @Test
+    void 보류_중인_콜의_해제는_CancelAtxfer를_보냄() {
+        loggedIn();
+        heldCall();
+
+        service.unhold(LINKEDID, "agent1");
+
+        assertEquals(List.of("cancelAtxfer " + AGENT_CHANNEL), channelActions.sent);
+    }
+
+    @Test
+    void 보류가_아닌_콜의_해제는_거부됨() {
+        loggedIn();
+        connectedCall();
+
+        assertThrows(IllegalStateException.class, () -> service.unhold(LINKEDID, "agent1"));
+        assertTrue(channelActions.sent.isEmpty());
+    }
+
+    @Test
+    void 보류_중인_콜의_끊기는_거부됨() {
+        loggedIn();
+        heldCall();
+
+        assertThrows(IllegalStateException.class, () -> service.hangup(LINKEDID, "agent1"));
+        assertTrue(channelActions.sent.isEmpty());
+    }
+
+    private Call connectedCall() {
+        Call call = ringingCall();
+        call.connected(INTERFACE, AGENT_CHANNEL);
+        return call;
+    }
+
+    // bridge 이벤트로 held가 켜진 통화를 재현한다 (ADR-0012)
+    private Call heldCall() {
+        Call call = connectedCall();
+        call.legStarted("agent-leg", AGENT_CHANNEL);
+        call.legStarted("hold-leg", "Local/1000@hold-00000001;1");
+        call.legEnteredBridge("hold-leg", "bridge-B");
+        call.legEnteredBridge("agent-leg", "bridge-B");
+        return call;
+    }
+
     private Call ringingCall() {
         Call call = Call.start(LINKEDID, "01012345678", "0212345678");
         call.enqueued("queue01");
@@ -179,6 +251,16 @@ class CallControlServiceTest {
         @Override
         public void hangup(String channel) {
             sent.add("hangup " + channel);
+        }
+
+        @Override
+        public void atxfer(String channel, String exten, String context) {
+            sent.add("atxfer %s %s %s".formatted(channel, exten, context));
+        }
+
+        @Override
+        public void cancelAtxfer(String channel) {
+            sent.add("cancelAtxfer " + channel);
         }
     }
 

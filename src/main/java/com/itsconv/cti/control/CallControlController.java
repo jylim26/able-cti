@@ -34,6 +34,18 @@ public class CallControlController {
         service.hangup(callId, request.loginId());
     }
 
+    @PostMapping("/{callId}/hold")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void hold(@PathVariable String callId, @RequestBody ControlRequest request) {
+        service.hold(callId, request.loginId());
+    }
+
+    @PostMapping("/{callId}/unhold")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void unhold(@PathVariable String callId, @RequestBody ControlRequest request) {
+        service.unhold(callId, request.loginId());
+    }
+
     record CallRequest(String loginId, String number) {
     }
 

@@ -25,6 +25,7 @@ public class Call {
     private String agent;
     private String agentChannel;
     private Instant answeredAt;
+    private boolean held;
 
     private Call(String linkedid, CallDirection direction, String callerNumber, String calledNumber) {
         this.linkedid = linkedid;
@@ -100,6 +101,52 @@ public class Call {
             this.state = CallState.ENDED;
         }
         return lastLegEnded;
+    }
+
+    // bridge 이벤트로 레그 위치를 갱신하고 보류 여부를 다시 계산한다. 바뀌었으면 true (ADR-0012)
+    public synchronized boolean legEnteredBridge(String uniqueId, String bridgeId) {
+        CallLeg leg = legs.get(uniqueId);
+        if (leg == null) {
+            return false;
+        }
+        leg.enteredBridge(bridgeId);
+        return recomputeHeld();
+    }
+
+    public synchronized boolean legLeftBridge(String uniqueId, String bridgeId) {
+        CallLeg leg = legs.get(uniqueId);
+        if (leg == null) {
+            return false;
+        }
+        leg.leftBridge(bridgeId);
+        return recomputeHeld();
+    }
+
+    private boolean recomputeHeld() {
+        boolean newHeld = computeHeld();
+        if (newHeld == held) {
+            return false;
+        }
+        this.held = newHeld;
+        return true;
+    }
+
+    // 보류 = 상담원 레그의 bridge에 살아 있는 hold 레그가 같이 있다.
+    // "다른 bridge" 기준은 협의 전환과 topology가 겹쳐 쓰지 않는다 (ADR-0012)
+    private boolean computeHeld() {
+        if (agentChannel == null) {
+            return false;
+        }
+        String agentBridge = legs.values().stream()
+                .filter(leg -> leg.isAlive() && agentChannel.equals(leg.getChannel()))
+                .map(CallLeg::getBridgeId)
+                .filter(bridgeId -> bridgeId != null)
+                .findFirst().orElse(null);
+        if (agentBridge == null) {
+            return false;
+        }
+        return legs.values().stream()
+                .anyMatch(leg -> leg.isAlive() && leg.isHoldLeg() && agentBridge.equals(leg.getBridgeId()));
     }
 
     public synchronized Map<String, CallLeg> legs() {

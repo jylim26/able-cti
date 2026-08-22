@@ -21,6 +21,8 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class CallControlService {
 
+    private static final String HOLD_CONTEXT = "hold";
+
     private final AgentSessionRegistry sessions;
     private final PendingOutboundRegistry pendingOutbound;
     private final CallRegistry calls;
@@ -62,13 +64,42 @@ public class CallControlService {
 
     // 통화 중인 상담원 본인만, 상담원 레그만 끊는다 (ADR-0011)
     public void hangup(String callId, String loginId) {
+        Call call = requireConnectedFor(callId, loginId);
+        // 보류 중 상담원 레그를 끊으면 고객이 가드 타임아웃까지 대기음에 갇힌다 (ADR-0012)
+        if (call.isHeld()) {
+            throw new IllegalStateException("call %s is held; unhold first".formatted(callId));
+        }
+        channelActions.hangup(call.getAgentChannel());
+        log.info("hangup sent: callId={} loginId={} channel={}", callId, loginId, call.getAgentChannel());
+    }
+
+    // 보류는 hold context로의 협의 전환. 확정은 bridge 이벤트가 판정한다 (ADR-0012)
+    public void hold(String callId, String loginId) {
+        Call call = requireConnectedFor(callId, loginId);
+        if (call.isHeld()) {
+            throw new IllegalStateException("call %s is already held".formatted(callId));
+        }
+        AgentSession session = requireSession(loginId);
+        channelActions.atxfer(call.getAgentChannel(), session.getExtension(), HOLD_CONTEXT);
+        log.info("hold sent: callId={} loginId={} channel={}", callId, loginId, call.getAgentChannel());
+    }
+
+    public void unhold(String callId, String loginId) {
+        Call call = requireConnectedFor(callId, loginId);
+        if (!call.isHeld()) {
+            throw new IllegalStateException("call %s is not held".formatted(callId));
+        }
+        channelActions.cancelAtxfer(call.getAgentChannel());
+        log.info("unhold sent: callId={} loginId={} channel={}", callId, loginId, call.getAgentChannel());
+    }
+
+    private Call requireConnectedFor(String callId, String loginId) {
         Call call = requireCall(callId);
         AgentSession session = requireSession(loginId);
         if (call.getState() != CallState.CONNECTED || !session.getQueueInterface().equals(call.getAgent())) {
             throw new IllegalStateException("call %s is not connected for agent %s".formatted(callId, loginId));
         }
-        channelActions.hangup(call.getAgentChannel());
-        log.info("hangup sent: callId={} loginId={} channel={}", callId, loginId, call.getAgentChannel());
+        return call;
     }
 
     private Call requireCall(String callId) {
