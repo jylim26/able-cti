@@ -52,6 +52,28 @@ Date: 2026-08-19
 - 전제 조건: 서버 `res_pjsip_notify`(+`pjsip_notify.conf`),
   단말 405HD `voip/talk_event/enabled=1`. 자세한 건 ADR-0011.
 
+## 보류·해제
+
+    POST /api/v1/calls/{callId}/hold   {loginId}   → 202
+    POST /api/v1/calls/{callId}/unhold {loginId}   → 202
+
+    CallControlService     본인 확인 + held 게이트
+         ↓
+    AmiChannelActions      보류: SetVar(TRANSFER_EXTEN) + Atxfer(상담원 채널 → hold context)
+                           해제: CancelAtxfer(상담원 채널)   (ami 모듈)
+
+- 둘 다 CONNECTED 통화의 상담원 본인만. hold는 `held=false`일 때만,
+  unhold는 `held=true`일 때만. **보류 중 끊기는 거절한다** — 고객이
+  가드 타임아웃까지 대기음에 갇힌다 (ADR-0012).
+- `TRANSFER_EXTEN`은 모든 Atxfer 직전에 SetVar로 덮어쓴다. 채널에 남은
+  낡은 값이 읽히는 함정은 [보류 실측](../domain/hold-events.md).
+- `CancelAtxfer`는 asterisk-java 3.41에 없어 커스텀 액션(`CancelAtxferAction`)이다.
+- 확정은 번역기가 bridge 이벤트로 판정한다: 상담원 레그의 bridge에 살아 있는
+  hold 레그(채널명 `@hold-`)가 있으면 held. 바뀌는 순간 `CallHeldEvent`/
+  `CallResumedEvent`가 나가고 push가 `HELD`/`RESUMED`로 상담원 토픽에 알린다.
+- 전제 조건: features.conf atxfer 설정, `Queue(...,t)`, musiconhold.conf,
+  dialplan `[hold]` context. 전부 ADR-0012와 실측 문서에 있다.
+
 ## 설정
 
     cti:

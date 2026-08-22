@@ -40,10 +40,12 @@ docs 하위 폴더는 성격으로 나뉜다. 새 문서는 성격에 맞는 폴
 | [docs/adr/0009](docs/adr/0009-outbound-click-to-call.md) | 아웃바운드는 pending 선등록, 발신은 아웃바운드 이석에서만 |
 | [docs/adr/0010](docs/adr/0010-call-event-push.md) | 콜 이벤트는 종류별 메시지로 상담원 토픽에 푸시한다 |
 | [docs/adr/0011](docs/adr/0011-answer-hangup.md) | 받기는 울리는 채널에 talk NOTIFY, 끊기는 상담원 레그 Hangup |
+| [docs/adr/0012](docs/adr/0012-hold-via-attended-transfer.md) | 보류는 hold context로의 협의 전환, 확정은 hold 레그가 있는 bridge 구성 |
 | [docs/domain/asterisk-call-model.md](docs/domain/asterisk-call-model.md) | 채널·브리지·context 등 Asterisk가 통화를 보는 방식 |
 | [docs/domain/queue-call-events.md](docs/domain/queue-call-events.md) | 큐 콜에서 실제로 오는 AMI 이벤트와 함정. 상태 머신 설계의 입력 |
 | [docs/domain/queue-member-events.md](docs/domain/queue-member-events.md) | 큐 멤버 투입/이석 시 오는 AMI 이벤트와 함정. 상담원 상태 구현의 입력 |
 | [docs/domain/outbound-call-events.md](docs/domain/outbound-call-events.md) | Originate 발신에서 오는 AMI 이벤트와 함정. 아웃바운드 설계의 입력 |
+| [docs/domain/hold-events.md](docs/domain/hold-events.md) | 보류/해제에서 오는 AMI 이벤트·bridge topology와 함정. 보류 설계의 입력 |
 | [docs/notes/ami.md](docs/notes/ami.md) | AMI 연결 (`ami` 모듈) |
 | [docs/notes/call-assembly.md](docs/notes/call-assembly.md) | 콜 조립 (`call` 모듈) |
 | [docs/notes/agent.md](docs/notes/agent.md) | 상담원 상태 (`agent` 모듈) |
@@ -81,8 +83,9 @@ Date: 2026-08-19
 | 콜-상담원 연동 | 콜 연결/종료를 Spring 이벤트로 발행, 상담원 ON_CALL·ACW 전이 ([ADR-0006](docs/adr/0006-spring-events-between-modules.md)) |
 | 아웃바운드 (클릭투콜) | POST `/api/v1/calls`. ChannelId 예약, pending 선등록, DialEnd 응답 감지, PAUSED(OUTBOUND) 게이트 ([ADR-0009](docs/adr/0009-outbound-click-to-call.md), `control` 모듈) |
 | 받기·끊기 | POST `/api/v1/calls/{callId}/answer`·`/hangup`. 받기는 울리는 채널에 talk NOTIFY(기준 단말 405HD), 끊기는 상담원 레그 Hangup ([ADR-0011](docs/adr/0011-answer-hangup.md)) |
+| 보류·해제 | POST `/api/v1/calls/{callId}/hold`·`/unhold`. Atxfer(hold context)/CancelAtxfer, 확정은 bridge 구성의 hold 레그로 판정, HELD·RESUMED 푸시 ([ADR-0012](docs/adr/0012-hold-via-attended-transfer.md)) |
 | DB 접근 | `agents`·`agent_queues`에서 상담원과 큐 배정 조회 (JdbcClient) |
-| 단위 테스트 | 번역기 17개 + 상담원 세션 13개 + 상담원 서비스 6개 + 통화 제어 11개 + 콜 푸시 4개 통과 |
+| 단위 테스트 | 번역기 20개 + 상담원 세션 13개 + 상담원 서비스 6개 + 통화 제어 17개 + 콜 푸시 4개 통과 |
 | 실통화 검증 | 콜 6개 + 상담원 REST 9개 + 아웃바운드 4개 + 콜 푸시 7개 + 받기·끊기 4개 시나리오 확인 완료 ([푸시 노트](docs/notes/push.md), [통화 제어 노트](docs/notes/control.md)) |
 
 설계 결정: [ADR-0002](docs/adr/0002-linkedid-as-call-id.md) 통화 식별자는 linkedid,
@@ -102,8 +105,9 @@ Date: 2026-08-19
 4. ~~받기·끊기·착신 알림~~ — 완료 ([ADR-0010](docs/adr/0010-call-event-push.md),
    [ADR-0011](docs/adr/0011-answer-hangup.md)). 실통화 검증 완료
    ([통화 제어 노트](docs/notes/control.md))
-5. **보류/해제** — 코드 전에 Asterisk 실측 스파이크 먼저.
-   채널별 역할과 bridge 추적(콜 모델 확장)이 선행 조건
+5. **보류/해제** — 구현 완료 ([ADR-0012](docs/adr/0012-hold-via-attended-transfer.md),
+   [실측](docs/domain/hold-events.md), [노트](docs/notes/control.md)).
+   실통화 검증(테스트 페이지에서 보류·해제·수동 `*2`)이 남았다
 6. **호전환 (블라인드 → 협의) → 3자 통화** — 소유권 이전 포함
 7. **읽기 모델·상태 이력·통계** — calls/참여 이력 영속화, 상담원 상태 이력 테이블
 8. **녹취** — 자동 녹취, 조회, 후처리
