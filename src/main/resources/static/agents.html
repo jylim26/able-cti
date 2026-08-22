@@ -136,6 +136,13 @@ function onCallEvent(loginId, e) {
       <button onclick="callControl('${e.data.callId}','answer','${loginId}')">받기</button>`;
   } else if (e.event === 'DIALING') {
     cell.innerHTML = `<span class="ringing">☎ 발신 ${e.data.customerNumber}</span>`;
+  } else if (e.event === 'HELD') {
+    cell.innerHTML = `${e.data.callId} <span class="ringing">⏸ 보류중</span>
+      <button onclick="callControl('${e.data.callId}','unhold','${loginId}')">해제</button>`;
+  } else if (e.event === 'RESUMED') {
+    cell.innerHTML = `${e.data.callId}
+      <button onclick="callControl('${e.data.callId}','hold','${loginId}')">보류</button>
+      <button onclick="callControl('${e.data.callId}','hangup','${loginId}')">끊기</button>`;
   } else if (cell.querySelector('.ringing')) {
     cell.textContent = '-';
   }
@@ -149,7 +156,9 @@ function render(s) {
   td[3].innerHTML = `<span class="badge ${s.status}">${s.status}</span>`;
   td[4].textContent = s.pauseReason ?? '-';
   td[5].innerHTML = s.status === 'ON_CALL'
-    ? `${s.callId} (${s.callDirection}) <button onclick="callControl('${s.callId}','hangup','${s.loginId}')">끊기</button>`
+    ? `${s.callId} (${s.callDirection})
+      <button onclick="callControl('${s.callId}','hold','${s.loginId}')">보류</button>
+      <button onclick="callControl('${s.callId}','hangup','${s.loginId}')">끊기</button>`
     : (s.callId ? `${s.callId} (${s.callDirection})` : '-');
 }
 
